@@ -7,12 +7,89 @@
 # Needs    : the lab kubeconfig. No SSH, no root, no node access.
 #
 #   export KUBECONFIG=~/gwapi-lab.kubeconfig
-#   ./00-check-prereqs.sh
+#   ./00-check-prereqs.sh [--install-prereqs]
 #
 # Verifies local tooling, cluster reachability, RBAC, and that Traefik is
 # serving. Exits non-zero if anything required is missing.
 #
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
+INSTALL_PREREQS=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --install-prereqs)
+      INSTALL_PREREQS=true
+      shift
+      ;;
+    -h|--help)
+      cat <<EOF
+Usage: $0 [--install-prereqs]
+
+Options:
+  --install-prereqs   Automatically install missing tools (kubectl, grpcurl, git, jq, helm, etc.)
+  -h, --help          Show this help message
+EOF
+      exit 0
+      ;;
+    *)
+      die "Unknown argument: $1"
+      ;;
+  esac
+done
+
+if [[ "$INSTALL_PREREQS" = true ]]; then
+  title "Installing prerequisites"
+
+  SUDO=""
+  if [[ $EUID -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+  fi
+
+  # 1. Package manager dependencies (git, jq, helm, curl, openssl, tar, gzip)
+  if command -v zypper >/dev/null 2>&1; then
+    log "Installing system packages via zypper (git, jq, helm, curl, openssl, tar, gzip)..."
+    $SUDO zypper --non-interactive install -y git jq helm curl tar gzip openssl || warn "zypper install failed"
+  elif command -v apt-get >/dev/null 2>&1; then
+    log "Installing system packages via apt-get (git, jq, helm, curl, openssl, tar, gzip)..."
+    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq git jq helm curl tar gzip openssl || warn "apt-get install failed"
+  fi
+
+  # 2. kubectl CLI
+  if ! command -v kubectl >/dev/null 2>&1; then
+    log "Installing kubectl..."
+    K8S_RELEASE="$(curl -L -s https://dl.k8s.io/release/stable.txt 2>/dev/null || echo "v1.31.0")"
+    if curl -sSL -o /tmp/kubectl "https://dl.k8s.io/release/${K8S_RELEASE}/bin/linux/amd64/kubectl"; then
+      chmod 755 /tmp/kubectl
+      $SUDO install -m 755 /tmp/kubectl /usr/local/bin/kubectl 2>/dev/null \
+        || $SUDO mv /tmp/kubectl /usr/local/bin/kubectl
+      rm -f /tmp/kubectl
+    else
+      warn "Failed to download kubectl"
+    fi
+  fi
+
+  # 3. grpcurl
+  if ! command -v grpcurl >/dev/null 2>&1; then
+    log "Installing grpcurl..."
+    GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+      x86_64|amd64) RPM_ARCH="x86_64"; TAR_ARCH="x86_64" ;;
+      aarch64|arm64) RPM_ARCH="arm64"; TAR_ARCH="arm64" ;;
+      *) RPM_ARCH="x86_64"; TAR_ARCH="x86_64" ;;
+    esac
+    GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
+    if command -v zypper >/dev/null 2>&1; then
+      $SUDO zypper --non-interactive install -y "$GRPCURL_RPM" || warn "Could not install grpcurl via zypper"
+    elif command -v rpm >/dev/null 2>&1; then
+      $SUDO rpm -Uvh "$GRPCURL_RPM" || warn "Could not install grpcurl via rpm"
+    else
+      curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${TAR_ARCH}.tar.gz" \
+        | $SUDO tar -xz -C /usr/local/bin grpcurl 2>/dev/null || warn "Could not extract grpcurl"
+    fi
+  fi
+fi
 
 title "Local tooling"
 

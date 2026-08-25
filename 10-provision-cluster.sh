@@ -39,14 +39,22 @@ die()  { printf '\n\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "Run this as root on the lab VM."
 
 # ---------------------------------------------------------------------------
-log "OS prerequisites"
+log "OS prerequisites & tooling"
 # ---------------------------------------------------------------------------
 if command -v zypper >/dev/null 2>&1; then
-  zypper --non-interactive install -y curl jq tar gzip openssl >/dev/null
+  zypper --non-interactive install -y curl jq git helm tar gzip openssl >/dev/null
+  GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
+  GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_amd64.rpm"
+  zypper --non-interactive install -y "$GRPCURL_RPM" >/dev/null || warn "Could not install grpcurl RPM"
 elif command -v apt-get >/dev/null 2>&1; then
-  apt-get update -qq && apt-get install -y -qq curl jq tar gzip openssl >/dev/null
+  apt-get update -qq && apt-get install -y -qq curl jq git helm tar gzip openssl >/dev/null
 else
-  warn "Unknown package manager — ensure curl, jq, tar, openssl are present."
+  warn "Unknown package manager — ensure curl, jq, git, helm, tar, openssl are present."
+fi
+
+if ! command -v kubectl >/dev/null 2>&1; then
+  K8S_RELEASE="$(curl -L -s https://dl.k8s.io/release/stable.txt 2>/dev/null || echo "v1.31.0")"
+  curl -sSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${K8S_RELEASE}/bin/linux/amd64/kubectl" && chmod 755 /usr/local/bin/kubectl || warn "Could not install kubectl"
 fi
 
 if systemctl is-enabled firewalld >/dev/null 2>&1; then

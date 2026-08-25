@@ -48,10 +48,11 @@ kubectl get nodes
 ```
 
 Run the prerequisite check before Lab 1 — it verifies your tooling, your RBAC, and that Traefik is
-serving:
+serving (add `--install-prereqs` to automatically install missing client tools):
 
 ```bash
 ./scripts/00-check-prereqs.sh
+# or if tools are missing: ./scripts/00-check-prereqs.sh --install-prereqs
 ```
 
 ### Reaching the Gateway
