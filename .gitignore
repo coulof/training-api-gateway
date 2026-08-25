@@ -1,0 +1,65 @@
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor & IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# Kubernetes & Cluster Credentials
+*.kubeconfig
+kubeconfig*
+.kube/
+
+# Certificates, Keys & Secrets
+*.key
+*.crt
+*.pem
+*.csr
+*.cer
+*.pfx
+*.p12
+
+# Presentation / Marp Builds
+deck.html
+deck.pdf
+deck.pptx
+*.pdf
+*.pptx
+
+# Node & Package Managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Environment Variables & Local Overrides
+.env
+.env.*
+!.env.example
+
+# Temporary & Local Lab Files
+tmp/
+*.tmp
+*.bak
+*.log
+lab/
+labyaml/
