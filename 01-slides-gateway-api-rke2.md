@@ -19,21 +19,21 @@ style: |
     color: var(--suse-jungle);
     font-family: "Poppins", "Inter", "Helvetica Neue", Arial, sans-serif;
     font-size: 25px;
-    padding: 55px 70px;
+    padding: 50px 65px;
   }
   section h1 {
     color: var(--suse-jungle);
-    font-size: 1.55em;
+    font-size: 1.50em;
     border-bottom: 4px solid var(--suse-green);
-    padding-bottom: 12px;
-    margin-bottom: 24px;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
   }
   section h2 { color: var(--suse-green); font-size: 1.15em; }
-  section h3 { color: var(--suse-jungle); font-size: 1.0em; }
+  section h3 { color: var(--suse-jungle); font-size: 0.95em; }
   section code { font-size: 0.82em; background: #F2F7F5; }
-  section pre { font-size: 0.66em; line-height: 1.35; background: #F2F7F5;
-                border-left: 5px solid var(--suse-green); padding: 14px 18px; }
-  section table { font-size: 0.80em; }
+  section pre { font-size: 0.64em; line-height: 1.32; background: #F2F7F5;
+                border-left: 5px solid var(--suse-green); padding: 12px 16px; margin: 12px 0; }
+  section table { font-size: 0.78em; }
   section th { background: var(--suse-jungle); color: #FFFFFF; }
   section strong { color: var(--suse-green); }
   section a { color: var(--suse-waterhole); }
@@ -52,7 +52,7 @@ style: |
   section.divider h2 { color: var(--suse-jungle); font-weight: 400; }
   section.lab { border-left: 22px solid var(--suse-persimmon); }
   section.lab h1 { border-bottom: 4px solid var(--suse-persimmon); }
-  .small { font-size: 0.80em; color: var(--suse-grey); }
+  .small { font-size: 0.78em; color: var(--suse-grey); }
   .warn  { color: var(--suse-persimmon); font-weight: 600; }
   footer { color: var(--suse-grey); font-size: 0.55em; }
 footer: "Gateway API on RKE2 — SUSE Consulting"
@@ -81,19 +81,16 @@ Adjust depth of Part 1 accordingly — if the room is senior, compress History t
 
 **Concept, then immediately prove it on your own cluster.**
 
-| | Block | Labs |
-|---|---|---|
-| 1 | Ingress: what it gave us, what it cost | **1–2** |
-| 2 | Why Gateway API — the resource model | **3–4** |
-| — | *Break* | |
-| 3 | Expressiveness: canary, headers, gRPC | **5–6** |
-| 4 | Multi-tenancy and safe references | **7** |
-| 5 | RKE2 reality, migration strategy, wrap | — |
+| | Block | Labs | Focus |
+|---|---|---|---|
+| 1 | Ingress: what it gave us, what it cost | **1–2** | Baseline Ingress & annotation pain |
+| 2 | Why Gateway API — the resource model | **3–4** | Enable in RKE2 & HTTPRoute routing |
+| — | *Break* | | |
+| 3 | Expressiveness: canary, headers, gRPC | **5–6** | Weighted splitting & GRPCRoute |
+| 4 | Multi-tenancy and safe references | **7** | Shared Gateway & ReferenceGrant |
+| 5 | RKE2 reality, migration strategy, wrap | — | Production architecture & git diff |
 
-Seven labs. One application — **podinfo** — configured first the Ingress way, then the
-Gateway API way, tracked in git so you can diff the two at the end.
-
-<span class="small">Falling behind is fine: every lab starts from a known state and says what it assumes.</span>
+Every lab has ready-to-use manifests in `manifests/`. We configure **podinfo** first the Ingress way, then the Gateway API way, tracked in git.
 
 ---
 
@@ -103,20 +100,42 @@ Gateway API way, tracked in git so you can diff the two at the end.
 
 - One **single-node RKE2** cluster each, driven **entirely from a kubeconfig**
 - No SSH. No root. No node access. Everything is `kubectl`.
-- `ingress-controller: traefik` + `enable-servicelb: true`
-- **Gateway API is deliberately NOT enabled yet** — you turn it on in Lab 3
-- Workload: **podinfo**, v1 and v2
+- Ingress data plane: **Traefik** (DaemonSet/Deployment)
+- Workload: **podinfo** (v1, v2, gRPC)
 
 ```bash
 export KUBECONFIG=./gwapi-lab.kubeconfig
-./scripts/00-check-prereqs.sh          # tooling, RBAC, Traefik, data path
+./scripts/00-check-prereqs.sh          # verify tooling, RBAC, Traefik, data path
 
-# one reachable URL for every curl in every lab
-kubectl -n kube-system port-forward svc/traefik 8080:80 &
+# Gateway URL: port-forward fallback works from anywhere a kubeconfig works
+kubectl -n kube-system port-forward svc/rke2-traefik 8080:80 &
 export GW_URL="http://127.0.0.1:8080"
 ```
 
-<span class="small">If Traefik's LoadBalancer address is routable from your machine, use that instead — it exercises the real data path.</span>
+<span class="small">If Traefik's LoadBalancer address is routable from your machine, use that instead (`export GW_URL="http://<LB_IP>"`).</span>
+
+---
+
+# Meet the workload: podinfo
+
+A lightweight Go microservice by Stefan Prodan ([github.com/stefanprodan/podinfo](https://github.com/stefanprodan/podinfo)) designed for cloud-native networking demos.
+
+- **Dynamic customization via environment variables:**
+  - `PODINFO_UI_MESSAGE`: Custom message in JSON & UI (`VERSION ONE`, `VERSION TWO`, `TEAM A`)
+  - `PODINFO_UI_COLOR`: UI badge accent (`#30BA78` green, `#FE7C3F` orange, `#2453FF` blue)
+- **Built-in inspection & health endpoints:**
+  - `GET /`: Returns JSON with hostname, version, message, color, and client IP
+  - `GET /headers`: Echoes request headers (validates header routing & filters)
+  - `GET /readyz`, `GET /healthz`: Kubernetes liveness and readiness probes
+- **Multi-protocol support:**
+  - **HTTP/1.1** on port `9898`
+  - **gRPC** on port `9999` with `grpc.health.v1.Health/Check`
+
+<!--
+Presenter note:
+Explain why podinfo is our test harness: it echoes back everything Traefik and
+Gateway API do to the request (headers, path rewrites, traffic weights).
+-->
 
 ---
 
@@ -124,7 +143,7 @@ export GW_URL="http://127.0.0.1:8080"
 
 # Part 1
 
-## History
+## History: The Ingress Era
 
 ---
 
@@ -153,7 +172,7 @@ kind: Ingress
 metadata:
   name: shop
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: shop.example.com
       http:
@@ -173,29 +192,48 @@ Genuinely useful. Genuinely portable. **For exactly this.**
 
 <!-- _class: lab -->
 
-# Lab 1 — Make it work, the 2015 way
+# Lab 1.1 & 1.2 — Setup & Inspect
 
-**20 min** · Prove the cluster works, and meet the artifact we will carry all session.
+**Goal:** Verify cluster ingress and explore the workload manifests.
 
-1. Verify RKE2, Traefik, and that **ServiceLB** gave Traefik a real address
-2. `helm template` **podinfo's own chart** — read what it generates
-3. **Take ownership:** save a trimmed Deployment / Service / Ingress into `~/lab/`
-4. `git init` — from here on, every change is a diff you can show
+1. **Verify Traefik ingress data plane:**
+   ```bash
+   kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik
+   kubectl get ingressclass traefik
+   ```
+2. **Prepare your lab git repository:**
+   ```bash
+   mkdir -p ~/lab && cd ~/lab
+   git init -q
+   ```
+3. **Inspect the pre-built manifests:**
+   - `manifests/01-podinfo-v1.yaml`: Namespace `demo`, Deployment `podinfo-v1`, Service `podinfo-v1:9898`
+   - `manifests/02-ingress.yaml`: Ingress `podinfo` (host: `podinfo.lab`)
 
-```bash
-kubectl -n kube-system get svc traefik      # EXTERNAL-IP must not be <pending>
-curl -s -H 'Host: podinfo.lab' $GW_URL/ | jq -r .message
-```
+---
 
-**Checkpoint:** `VERSION ONE` comes back, and you own the YAML — not Helm.
+<!-- _class: lab -->
 
-<!--
-Two jobs here. One: smoke-test every VM before anything can go wrong later.
-Two: establish the artifact. Everything from Lab 2 onward is an edit to files
-the participant owns, tracked in git, so the Ingress-era and Gateway-era configs
-can be diffed side by side at the end. That diff is the punchline of the session.
-Do not let anyone skip the git init.
--->
+# Lab 1.3 & 1.4 — Deploy & Verify Ingress
+
+1. **Deploy podinfo v1 and the baseline Ingress:**
+   ```bash
+   kubectl apply -f manifests/01-podinfo-v1.yaml
+   kubectl apply -f manifests/02-ingress.yaml
+   ```
+2. **Verify traffic routing:**
+   ```bash
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/" | jq .
+   ```
+   *Expected response:*
+   ```json
+   { "message": "VERSION ONE", "color": "#30BA78", "version": "6.7.0" }
+   ```
+3. **Save and commit:**
+   ```bash
+   cp manifests/01-podinfo-v1.yaml manifests/02-ingress.yaml ~/lab/
+   cd ~/lab && git add -A && git commit -m "Lab 1: podinfo behind a plain Ingress"
+   ```
 
 ---
 
@@ -227,7 +265,7 @@ metadata:
 
 - Untyped opaque strings — no schema, no `kubectl explain`, no admission validation
 - Typo silently does nothing
-- `configuration-snippet` = arbitrary NGINX config injected from a namespace-scoped object
+- `configuration-snippet` = arbitrary config injected from a namespace-scoped object
 
 <span class="warn">This last one has been a recurring source of CVEs and privilege-escalation findings.</span>
 
@@ -241,27 +279,71 @@ architectural consequence of the single-resource model, not an NGINX bug.
 
 <!-- _class: lab -->
 
-# Lab 2 — Live the annotation problem
+# Lab 2.1 — Path Rewrite with Annotations
 
-**25 min** · Do the two most common real-world tasks. Feel what they cost.
+**Goal:** Route `/shop` requests to podinfo root `/` using Ingress annotations.
 
-1. **Path rewrite** — needs a `Middleware` CRD *plus* an annotation *plus* the
-   `namespace-name@kubernetescrd` naming convention. Get one wrong: silent failure.
-2. **Canary to v2** — a **second, duplicate Ingress object** carrying weight annotations
-3. Measure the actual split with a request loop
-4. Grant a "developer" edit rights on Ingress — then watch them change the **TLS host**
+1. **Traefik requires a proprietary Middleware CRD:**
+   ```bash
+   kubectl apply -f manifests/03-middleware-strip.yaml
+   ```
+2. **Apply Ingress with Traefik annotation:**
+   ```bash
+   kubectl apply -f manifests/02-ingress-with-rewrite.yaml
+   ```
+3. **Verify:**
+   ```bash
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message   # VERSION ONE
+   ```
 
-**Checkpoint:** the canary works, and you can name three things wrong with *how*.
+Notice the annotation syntax: `demo-strip-shop@kubernetescrd`. A typo in the namespace or provider suffix fails silently.
 
-<!--
-This is the emotional core of Part 1. Do not rush it and do not help too fast —
-let people mistype the @kubernetescrd suffix and get a silent 404. That
-experience is what makes the typed-field argument land 20 minutes later.
+---
 
-Step 4 is the RBAC demo: one Ingress object mixes dev-owned routing and
-platform-owned TLS, so any Role that permits the first permits the second.
-Ask the room how they work around this today. The answer is always "a ticket".
--->
+<!-- _class: lab -->
+
+# Lab 2.2 & 2.3 — Canary Attempt
+
+1. **Deploy podinfo v2 (canary backend, orange color):**
+   ```bash
+   kubectl apply -f manifests/04-podinfo-v2.yaml
+   ```
+2. **In Ingress, canary requires a duplicate Ingress object:**
+   ```bash
+   kubectl apply -f manifests/05-ingress-canary.yaml
+   ```
+3. **Measure traffic distribution:**
+   ```bash
+   for i in $(seq 1 50); do
+     curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message
+   done | sort | uniq -c
+   ```
+
+*Lesson:* Ingress has no core canary field. Traefik ignores Ingress annotation weights unless you define a proprietary `TraefikService` CRD.
+
+---
+
+<!-- _class: lab -->
+
+# Lab 2.4 — The RBAC Security Flaw
+
+**Goal:** Expose why Ingress fails multi-team security boundaries.
+
+1. **Create developer ServiceAccount and Ingress edit Role:**
+   ```bash
+   kubectl apply -f manifests/06-rbac-ingress.yaml
+   ```
+2. **Dev tests their permissions:**
+   ```bash
+   kubectl auth can-i update ingress -n demo --as=system:serviceaccount:demo:dev
+   ```
+3. **The flaw:** Because routing rules, hostnames, and TLS live in one object, `dev` can overwrite hostnames and TLS secrets for the entire platform.
+4. **Commit Lab 2 state:**
+   ```bash
+   cp manifests/03-middleware-strip.yaml manifests/04-podinfo-v2.yaml \
+      manifests/05-ingress-canary.yaml manifests/06-rbac-ingress.yaml ~/lab/
+   cd ~/lab && git add -A && git commit -m "Lab 2: annotations, canary, and RBAC flaw"
+   ```
 
 ---
 
@@ -294,12 +376,6 @@ RBAC is `verb` × `resource` × `namespace`. It cannot express *"devs may change
 
 **Result:** either app teams get edit rights on the whole object, or every routing change is a platform ticket.
 
-<!--
-This is the slide that lands with architects. Ask the room: who here has a Jira
-queue for ingress changes? Usually a few hands. That queue exists because of
-this design, not because your platform team likes tickets.
--->
-
 ---
 
 # The service mesh fork
@@ -319,31 +395,21 @@ Different syntax, different semantics, different RBAC, for the same conceptual o
 
 ---
 
-# Five years in beta
+# Five years in beta & the 2020 freeze
 
 - 2015 — `extensions/v1beta1` in Kubernetes 1.1
 - 2019 — moved to `networking.k8s.io/v1beta1`
-- **2020 — GA at last, in Kubernetes 1.19**
+- **August 2020 — GA & Frozen in Kubernetes 1.19 (`networking.k8s.io/v1`)**
 
 Nearly five years in beta is the community telling you something: *nobody was comfortable promising this API was the right shape.*
 
-By the time it went GA, the replacement effort had already started.
+By the time it went GA, the replacement effort (Gateway API) had already started.
+
+**Ingress is not deprecated; it is finished.** No new features will ever be added.
 
 ---
 
-# 2019 — the successor begins
-
-- SIG-Network starts work under the name **"Ingress v2"**, then **"Service APIs"**
-- Renamed **Gateway API** in 2020
-- Explicit design goals from day one:
-  - **Role-oriented** — separate resources for separate personas
-  - **Portable** — expressiveness in the spec, not in annotations
-  - **Expressive** — the common cases are typed fields
-  - **Extensible** — a defined mechanism for vendor extension, layered not bolted on
-
----
-
-# Gateway API timeline
+# Gateway API timeline to 2026
 
 | Date | Release | Milestone |
 |---|---|---|
@@ -351,42 +417,10 @@ By the time it went GA, the replacement effort had already started.
 | **Oct 2023** | **v1.0** | **GatewayClass, Gateway, HTTPRoute reach GA (v1)** |
 | May 2024 | v1.1 | GRPCRoute GA; **service mesh support GA** (GAMMA) |
 | 2024–2025 | v1.2 – v1.4 | BackendTLSPolicy, timeouts, retries, mirroring |
-| **Feb 2026** | **v1.5** | ListenerSet, TLSRoute, CORS filter, client-cert validation, ReferenceGrant → Standard |
+| **Feb 2026** | **v1.5** | ListenerSet, TLSRoute, CORS filter, ReferenceGrant → Standard |
 | **Jun 2026** | **v1.6** | **TCPRoute + UDPRoute GA**; experimental split to `gateway.networking.x-k8s.io` |
 
-<span class="small">Latest patch at time of writing: v1.6.1 (16 July 2026). 4-month cadence for Standard channel — verify before you deliver.</span>
-
----
-
-# Where we are — August 2026
-
-**Standard channel, `gateway.networking.k8s.io/v1`:**
-
-`GatewayClass` · `Gateway` · `HTTPRoute` · `GRPCRoute` · `TCPRoute` · `UDPRoute` · `TLSRoute` · `ReferenceGrant` · `ListenerSet`
-
-**Two release channels:**
-
-- **Standard** — GA resources and fields, backwards-compatible, safe to upgrade
-- **Experimental** — everything in Standard *plus* alpha resources and fields; since v1.6 these live in a **separate API group** `gateway.networking.x-k8s.io` with an `X` prefix
-
-<span class="small">The group split in v1.6 means you can no longer accidentally depend on an experimental field while believing you are on Standard.</span>
-
----
-
-# And Ingress?
-
-- Still GA. Still supported. Still works.
-- **Feature-frozen.** No new capability will land in the `Ingress` resource.
-- All SIG-Network investment goes to Gateway API.
-- Most controllers now ship both, with Gateway API as the strategic path.
-
-**Ingress is not deprecated. It is finished.**
-
-<!--
-Be precise here — people will ask "is Ingress deprecated?". No. There is no
-deprecation notice, no removal timeline. But nothing new will ever be added.
-Plan migrations on your schedule, not in a panic.
--->
+<span class="small">Latest patch: v1.6.1 (16 July 2026). Standard channel cadence is 4 months.</span>
 
 ---
 
@@ -394,7 +428,7 @@ Plan migrations on your schedule, not in a panic.
 
 # Part 2
 
-## Why Gateway API over Ingress
+## Why Gateway API: The Resource Model
 
 ---
 
@@ -405,16 +439,16 @@ GatewayClass          "what implementation"        cluster-scoped
     ▲                  (like StorageClass)
     │ gatewayClassName
     │
- Gateway              "where traffic enters"       namespaced
+  Gateway             "where traffic enters"       namespaced
     ▲                  listeners, ports, TLS, IP
     │ parentRefs
     │
- HTTPRoute            "how requests are routed"    namespaced
- GRPCRoute             matches, filters, backends
- TCPRoute
+  HTTPRoute           "how requests are routed"    namespaced
+  GRPCRoute            matches, filters, backends
+  TCPRoute
     │ backendRefs
     ▼
- Service / other backend
+  Service / other backend
 ```
 
 Three objects instead of one — **because there are three decisions, made by three people.**
@@ -423,29 +457,45 @@ Three objects instead of one — **because there are three decisions, made by th
 
 <!-- _class: lab -->
 
-# Lab 3 — Turn on Gateway API
+# Lab 3.1 & 3.2 — Enable Gateway API in RKE2
 
-**10 min** · Operator task. Nothing routes yet — we are installing capability.
+**Goal:** Turn on Traefik's Gateway API provider in RKE2.
 
-```bash
-# HelmChartConfig, NOT kubectl edit deploy/traefik (helm-controller reverts that)
-cat > /var/lib/rancher/rke2/server/manifests/rke2-traefik-config.yaml <<'EOF'
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
-metadata: { name: rke2-traefik, namespace: kube-system }
-spec:
-  valuesContent: |-
-    providers:
-      kubernetesGateway:
-        enabled: true
-EOF
-kubectl -n kube-system rollout status deploy/traefik
-```
+1. **Check pre-installed CRDs:**
+   ```bash
+   kubectl get crd | grep gateway.networking.k8s.io
+   # Notice: CRDs are installed by rke2-traefik-crd, but GatewayClass is empty!
+   kubectl get gatewayclass
+   ```
+2. **Enable Traefik Gateway Provider via HelmChartConfig:**
+   ```bash
+   kubectl apply -f manifests/09-helmchartconfig-traefik.yaml
+   ```
+3. **Wait for helm-controller to roll out Traefik:**
+   ```bash
+   kubectl -n kube-system rollout status daemonset/rke2-traefik --timeout=3m
+   ```
 
-Then **verify**: which CRDs appeared, what `bundle-version` they carry, and what
-`GatewayClass` exists that **you did not create**.
+---
 
-<span class="warn">Read the CRD-deletion warning before you ever disable Traefik again.</span>
+<!-- _class: lab -->
+
+# Lab 3.3 — Verify Gateway API Provider
+
+1. **Verify GatewayClass registration:**
+   ```bash
+   kubectl get gatewayclass
+   ```
+   *Expected output:*
+   ```text
+   NAME      CONTROLLER                      ACCEPTED   AGE
+   traefik   traefik.io/gateway-controller   True       15s
+   ```
+2. **Inspect supported API resources:**
+   ```bash
+   kubectl api-resources --api-group=gateway.networking.k8s.io
+   ```
+   You now have: `gateways`, `gatewayclasses`, `httproutes`, `grpcroutes`, `referencegrants`.
 
 ---
 
@@ -475,7 +525,7 @@ kubectl create role route-editor -n team-a \
 # Status conditions — you can finally debug
 
 ```bash
-$ kubectl describe httproute shop
+$ kubectl describe httproute podinfo
 Status:
   Parents:
     Conditions:
@@ -489,11 +539,8 @@ Status:
 ```
 
 Every Route reports, **per parent Gateway**:
-
 - `Accepted` — did the Gateway take this route?
 - `ResolvedRefs` — do all backends and grants resolve?
-
-Gateways report `Accepted`, `Programmed`, and per-listener `ResolvedRefs` + `Conflicted`.
 
 **With Ingress you read controller logs and guessed.**
 
@@ -501,71 +548,89 @@ Gateways report `Accepted`, `Programmed`, and per-listener `ResolvedRefs` + `Con
 
 <!-- _class: lab -->
 
-# Lab 4 — Gateway + HTTPRoute
+# Lab 4.1 & 4.2 — Gateway & HTTPRoute Handshake
 
-**25 min** · The same app as Lab 1, now with the personas separated.
+**Goal:** Establish the role-separated Gateway and HTTPRoute baseline.
 
-1. **Operator** creates a `Gateway` in `infra` with `allowedRoutes: from: Same`
-2. **Developer** creates an `HTTPRoute` in `demo` — watch it be **rejected**
-   (`NotAllowedByListeners`). This is the model working, not a bug.
-3. Operator opens the listener. Route attaches. Traffic flows.
-4. Redo the Lab 2 rewrite as a typed `URLRewrite` filter — no CRD, no annotation
-5. Redo the Lab 2 RBAC test: give the dev `httproutes` only. Watch TLS stay safe.
-
-```bash
-kubectl -n demo describe httproute podinfo    # read the conditions, always
-```
-
-**Checkpoint:** `git diff` shows the annotation stack replaced by typed fields.
+1. **Platform Operator deploys Gateway in `infra` namespace:**
+   ```bash
+   kubectl apply -f manifests/10-gateway.yaml
+   kubectl -n infra get gateway web
+   ```
+2. **App Developer creates HTTPRoute in `demo` namespace:**
+   ```bash
+   kubectl apply -f manifests/11-httproute.yaml
+   ```
+3. **Inspect the status condition handshake:**
+   ```bash
+   kubectl -n demo describe httproute podinfo
+   ```
+   Look for `Type: Accepted, Status: True` and `Type: ResolvedRefs, Status: True`.
+4. **Test routing:**
+   ```bash
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/" | jq -r .message   # VERSION ONE
+   ```
 
 ---
 
-# Expressiveness — matching
+<!-- _class: lab -->
+
+# Lab 4.3 & 4.4 — Typed Rewrite & Scoped RBAC
+
+1. **URL Rewrite using standard Gateway API filter (no CRD needed!):**
+   ```bash
+   kubectl apply -f manifests/11-httproute-rewrite.yaml
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message # VERSION ONE
+   ```
+2. **Apply scoped developer RBAC:**
+   ```bash
+   kubectl apply -f manifests/12-rbac-gateway.yaml
+   ```
+3. **Verify security isolation:**
+   ```bash
+   # Developer CAN manage routes:
+   kubectl auth can-i update httproutes -n demo --as=system:serviceaccount:demo:dev # yes
+   # Developer CANNOT tamper with Gateway or TLS:
+   kubectl auth can-i update gateways -n infra --as=system:serviceaccount:demo:dev  # no
+   ```
+4. **Commit Lab 4:**
+   ```bash
+   cp manifests/10-gateway.yaml manifests/11-httproute.yaml manifests/12-rbac-gateway.yaml ~/lab/
+   cd ~/lab && git add -A && git commit -m "Lab 4: Gateway API baseline, typed rewrite, scoped RBAC"
+   ```
+
+---
+
+<!-- _class: divider -->
+
+# Part 3
+
+## Expressiveness: Canary & gRPC
+
+---
+
+# Expressiveness — matching & filters
 
 ```yaml
 rules:
   - matches:
-      - path:
-          type: PathPrefix
-          value: /api/v2
+      - path: { type: PathPrefix, value: /api/v2 }
         method: POST
         headers:
-          - name: x-tenant
-            type: Exact
-            value: acme
-        queryParams:
-          - name: beta
-            value: "true"
+          - { name: x-tenant, value: acme }
+    filters:
+      - type: RequestHeaderModifier
+        requestHeaderModifier:
+          set: [{ name: x-env, value: prod }]
+      - type: URLRewrite
+        urlRewrite:
+          path: { type: ReplacePrefixMatch, replacePrefixMatch: / }
     backendRefs:
       - name: api-v2
         port: 8080
 ```
 
 Typed. Validated at admission. Discoverable with `kubectl explain`.
-
-**No annotation could ever express this.**
-
----
-
-# Expressiveness — filters
-
-```yaml
-filters:
-  - type: RequestHeaderModifier
-    requestHeaderModifier:
-      set:    [{ name: x-env, value: prod }]
-      remove: [ x-internal-debug ]
-  - type: URLRewrite
-    urlRewrite:
-      path:
-        type: ReplacePrefixMatch
-        replacePrefixMatch: /
-  - type: RequestMirror
-    requestMirror:
-      backendRef: { name: shadow-api, port: 8080 }
-```
-
-Also standard: `ResponseHeaderModifier`, `RequestRedirect`, `CORS` (since v1.5), `ExtensionRef` for vendor filters.
 
 ---
 
@@ -574,95 +639,110 @@ Also standard: `ResponseHeaderModifier`, `RequestRedirect`, `CORS` (since v1.5),
 ```yaml
 rules:
   - backendRefs:
-      - name: shop-v1
-        port: 8080
+      - name: podinfo-v1
+        port: 9898
         weight: 90
-      - name: shop-v2
-        port: 8080
+      - name: podinfo-v2
+        port: 9898
         weight: 10
 ```
 
 - Canary and blue-green **without a service mesh**
 - Weights are a first-class field — Argo Rollouts and Flux drive them natively
-- Compare: `nginx.ingress.kubernetes.io/canary-weight` on a *second, duplicate* Ingress object
+- Compare: Ingress required a *second, duplicate* object with vendor annotations
 
 ---
 
 <!-- _class: lab -->
 
-# Lab 5 — Canary, properly
+# Lab 5.1 & 5.2 — Weighted Canary & Header Routing
 
-**20 min** · The Lab 2 task again. Compare the mechanism, not just the result.
-
-1. One HTTPRoute, `backendRefs` weights 90/10 — **no second object**
-2. Shift to 50/50, then 0/100, with `kubectl patch`. Measure each time.
-3. Add deterministic targeting: `headers: x-canary: "true"` → always v2
-4. Inject a response header so you can see which rule served you
-
-```bash
-for i in $(seq 1 100); do
-  curl -s -H 'Host: podinfo.lab' $GW_URL/ | jq -r .message
-done | sort | uniq -c
-```
-
-**Checkpoint:** `git diff` the Lab 2 canary against this one. Two objects and four
-annotations became four lines in one object.
+1. **Apply 90/10 Canary split in a single HTTPRoute:**
+   ```bash
+   kubectl apply -f manifests/11-httproute-traffic-split.yaml
+   ```
+2. **Measure traffic distribution:**
+   ```bash
+   for i in $(seq 1 50); do
+     curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message
+   done | sort | uniq -c
+   ```
+3. **Add deterministic targeting via HTTP headers (`X-Canary: always`):**
+   ```bash
+   kubectl apply -f manifests/11-httproute-header-routing.yaml
+   curl -s -H 'Host: podinfo.lab' -H 'X-Canary: always' "$GW_URL/shop" | jq -r .message
+   # Always returns "VERSION TWO"
+   ```
 
 ---
 
-# Beyond HTTP
+# Beyond HTTP: Multi-protocol routing
 
-| Resource | Status | Use |
+| Resource | Status | Use case |
 |---|---|---|
-| `HTTPRoute` | GA (v1.0) | HTTP/HTTPS routing |
-| `GRPCRoute` | GA (v1.1) | gRPC service/method routing |
-| `TLSRoute` | Standard (v1.5) | SNI-based TLS passthrough |
-| `TCPRoute` | **GA (v1.6)** | Raw L4 TCP |
-| `UDPRoute` | **GA (v1.6)** | Raw L4 UDP |
+| `HTTPRoute` | GA (v1.0) | HTTP/HTTPS routing, headers, rewrites |
+| `GRPCRoute` | GA (v1.1) | gRPC service and method routing |
+| `TLSRoute` | Standard (v1.5) | SNI-based TLS passthrough (L4) |
+| `TCPRoute` | **GA (v1.6)** | Raw L4 TCP stream proxying |
+| `UDPRoute` | **GA (v1.6)** | Raw L4 UDP datagram proxying |
 
 One API, one Gateway, one RBAC model — for everything entering the cluster.
 
-**Compare:** ingress-nginx exposes TCP/UDP via a ConfigMap in `kube-system` listing `port: namespace/service:port`. No RBAC, no validation, no status.
+---
+
+<!-- _class: lab -->
+
+# Lab 6.1 & 6.2 — Deploy gRPC & GRPCRoute
+
+1. **Deploy podinfo with gRPC enabled (`port: 9999` & `appProtocol: h2c`):**
+   ```bash
+   kubectl apply -f manifests/20-podinfo-grpc.yaml
+   kubectl -n demo rollout status deploy/podinfo-grpc
+   ```
+2. **Deploy GRPCRoute with method matching:**
+   ```bash
+   kubectl apply -f manifests/21-grpcroute.yaml
+   ```
+3. **Inspect the GRPCRoute specification:**
+   ```yaml
+   matches:
+     - method:
+         service: grpc.health.v1.Health
+         method: Check
+   ```
 
 ---
 
 <!-- _class: lab -->
 
-# Lab 6 — GRPCRoute
+# Lab 6.3 & 6.4 — Test gRPC with grpcurl
 
-**15 min** · podinfo already speaks gRPC on 9999. Route it with the same API.
-
-1. Enable podinfo's gRPC port and mark the Service `appProtocol: kubernetes.io/h2c`
-2. Write a `GRPCRoute` — matching on **service and method**, not on URL paths
-3. Call it and confirm; then break the method match and read the status condition
-
-```yaml
-matches:
-  - method:
-      service: grpc.health.v1.Health
-      method: Check
-```
-
-**Checkpoint:** one Gateway, one RBAC model, two protocols.
-With Ingress this required a ConfigMap in `kube-system`.
+1. **Call gRPC health check endpoint through Traefik Gateway:**
+   ```bash
+   grpcurl -plaintext -authority grpc.podinfo.lab \
+     "${GW_URL#http://}" grpc.health.v1.Health/Check
+   ```
+   *Expected response:* `{"status": "SERVING"}`
+2. **Break method matching (simulate typo):**
+   ```bash
+   kubectl -n demo patch grpcroute podinfo-grpc --type=json \
+     -p '[{"op":"replace","path":"/spec/rules/0/matches/0/method/method","value":"Watch"}]'
+   # Re-run Check -> Returns (Unimplemented / Routing error)
+   ```
+3. **Restore and commit:**
+   ```bash
+   kubectl apply -f manifests/21-grpcroute.yaml
+   cp manifests/20-podinfo-grpc.yaml manifests/21-grpcroute.yaml ~/lab/
+   cd ~/lab && git add -A && git commit -m "Lab 6: multi-protocol routing with GRPCRoute"
+   ```
 
 ---
 
-# Portability, enforced
+<!-- _class: divider -->
 
-- Extensive **conformance test suite** maintained upstream
-- Implementations publish signed **conformance reports** per release
-- Conformance **profiles** (HTTP, GRPC, Mesh) with core vs extended feature sets
+# Part 4
 
-Practical consequence: an `HTTPRoute` using only core features behaves identically on Envoy Gateway, NGINX Gateway Fabric, Traefik, Cilium, Istio and Kong.
-
-<span class="small">Check the reports before you commit to an implementation — "supports Gateway API" and "passes conformance for the features you use" are different claims.</span>
-
-<!--
-This is the single most useful practical tip in Part 2. Point people at the
-implementations page and the conformance reports directory in the repo.
-Extended features are where portability quietly stops.
--->
+## Multi-Tenancy & Safe Delegation
 
 ---
 
@@ -670,23 +750,23 @@ Extended features are where portability quietly stops.
 
 **Problem with Ingress:** an Ingress in namespace A referencing a Secret or Service elsewhere is either forbidden or unsafely permitted.
 
-**Gateway API:** references across namespaces are denied by default, and the *target* namespace opts in.
+**Gateway API:** references across namespaces are **denied by default**, and the *target* namespace opts in.
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:
-  name: allow-infra-routes
-  namespace: team-a          # namespace that OWNS the backend
+  name: allow-team-a
+  namespace: team-b          # namespace that OWNS the Service
 spec:
   from:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      namespace: shared-routes
+      namespace: team-a      # namespace permitted to reference it
   to:
     - group: ""
       kind: Service
-      name: shop-api          # omit for all Services in this namespace
+      name: app
 ```
 
 **The owner grants. The consumer cannot self-authorise.**
@@ -697,10 +777,10 @@ spec:
 
 ```yaml
 listeners:
-  - name: https
-    protocol: HTTPS
-    port: 443
-    hostname: "*.apps.example.com"
+  - name: web
+    protocol: HTTP
+    port: 80
+    hostname: "*.podinfo.lab"
     allowedRoutes:
       namespaces:
         from: Selector
@@ -713,31 +793,77 @@ listeners:
 
 - Operator controls **which namespaces**, **which route kinds**, **which hostnames**
 - Route authors cannot hijack a hostname outside the listener's pattern
-- Exactly the shared-ingress multi-tenancy problem that Rancher Projects create
+- Solves the shared-ingress multi-tenancy problem that Rancher Projects create
 
 ---
 
 <!-- _class: lab -->
 
-# Lab 7 — Multi-tenancy and ReferenceGrant
+# Lab 7.1 & 7.2 — Multi-Tenant Setup
 
-**25 min** · The shared-Gateway model. Break it deliberately, then fix it.
+1. **Deploy two tenant namespaces (`team-a` and `team-b`):**
+   ```bash
+   kubectl apply -f manifests/29-tenants.yaml
+   kubectl -n team-a rollout status deploy/app
+   kubectl -n team-b rollout status deploy/app
+   ```
+2. **Configure shared Gateway with cross-namespace listener permissions:**
+   ```bash
+   kubectl apply -f manifests/30-gateway-shared.yaml
+   ```
+3. **Inspect `allowedRoutes` on Gateway:**
+   `allowedRoutes.namespaces.from: All` allows routes from `team-a` and `team-b` to attach.
 
-1. Two tenant namespaces, one restricted Gateway (`from: Selector` + hostname pattern)
-2. Label one namespace. Watch the other get `NotAllowedByListeners`.
-3. **Attempt a hostname hijack** — find out what the spec does and does *not* protect
-4. Cross-namespace `backendRef` → `RefNotPermitted`, fails closed and loud
-5. The backend's owner adds a `ReferenceGrant`. It resolves.
+---
 
-**Checkpoint:** you can say who grants what, and where the remaining gap is.
+<!-- _class: lab -->
 
-<!--
-Step 3 is the one to slow down on. Listener hostname constrains the suffix but
-does NOT stop tenant B claiming tenant A's exact hostname — precedence is
-deterministic but it is not an authorisation boundary. If you are delivering to
-a customer designing a shared Gateway, this is the finding they will thank you
-for. Mitigation is Kyverno or ValidatingAdmissionPolicy.
--->
+# Lab 7.3 & 7.4 — Route Attachment & Delegation
+
+1. **Team A attaches their HTTPRoute to shared Gateway:**
+   ```bash
+   kubectl apply -f manifests/30-httproute-team-a.yaml
+   ```
+2. **Verify traffic routing:**
+   ```bash
+   curl -s -H 'Host: a.podinfo.lab' "$GW_URL/" | jq -r .message   # TEAM A
+   ```
+3. **Attempt cross-namespace backend reference without grant:**
+   Edit `team-a` HTTPRoute to send `/shared` traffic to `service/app` in `team-b`:
+   ```bash
+   kubectl -n team-a describe httproute app
+   # Status shows: ResolvedRefs: False, Reason: RefNotPermitted
+   ```
+
+---
+
+<!-- _class: lab -->
+
+# Lab 7.5 & 7.6 — Granting Access with ReferenceGrant
+
+1. **Team B explicitly permits Team A via `ReferenceGrant`:**
+   ```bash
+   kubectl apply -f manifests/31-referencegrant.yaml
+   ```
+2. **Observe status resolution:**
+   ```bash
+   kubectl -n team-a describe httproute app
+   # ResolvedRefs transitions to True!
+   ```
+3. **Commit Lab 7:**
+   ```bash
+   cp manifests/29-tenants.yaml manifests/30-gateway-shared.yaml \
+      manifests/30-httproute-team-a.yaml manifests/31-referencegrant.yaml ~/lab/
+   cd ~/lab && git add -A && git commit -m "Lab 7: multi-tenancy and ReferenceGrant"
+   ```
+
+---
+
+<!-- _class: divider -->
+
+# Part 5
+
+## Architecture, Migration & Production Reality
 
 ---
 
@@ -749,256 +875,159 @@ Since v1.1, a `Service` can be a `parentRef`:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: payments-internal
+  name: cart-retry
+  namespace: shop
 spec:
   parentRefs:
     - group: ""
-      kind: Service         # east-west, not a Gateway
-      name: payments
+      kind: Service
+      name: cart-service
+      port: 8080
   rules:
-    - backendRefs:
-        - { name: payments-v1, port: 8080, weight: 80 }
-        - { name: payments-v2, port: 8080, weight: 20 }
+    - timeouts:
+        request: 500ms
+      backendRefs:
+        - name: cart-service
+          port: 8080
 ```
 
-**Same API for north-south and east-west.** One mental model, one RBAC story, one set of skills.
+**North-south (ingress) and east-west (mesh) now use the same API.**
 
 ---
 
-# Ingress → Gateway API cheat sheet
+# Architectural divide: Static vs Dynamic
 
-| Ingress | Gateway API |
-|---|---|
-| `ingressClassName` | `GatewayClass` + `Gateway` |
-| `spec.rules[].host` | Listener `hostname` and/or Route `hostnames` |
-| `spec.rules[].http.paths[]` | `rules[].matches[].path` |
-| `spec.tls[]` | Listener `tls.certificateRefs` |
-| `rewrite-target` annotation | `URLRewrite` filter |
-| `ssl-redirect` annotation | `RequestRedirect` filter on an HTTP listener |
-| `canary-weight` annotation | `backendRefs[].weight` |
-| `configuration-snippet` | Implementation policy CRD (deliberately not portable) |
-| TCP/UDP ConfigMap | `TCPRoute` / `UDPRoute` |
+| Architecture | Implementations | How it works |
+|---|---|---|
+| **Static infrastructure** | **Traefik**, Cilium | One ingress controller deployment; Gateways bind to existing listeners/ports |
+| **Dynamic infrastructure** | **Envoy Gateway**, NGF | Creating a `Gateway` object actively spawns a new Envoy Deployment + ServiceLB |
+
+**RKE2 with Traefik uses static infrastructure:**
+- You manage listeners on the existing Traefik DaemonSet/Service
+- Highly resource-efficient, predictable memory and port binding
+- Contrast with Envoy Gateway which provisions dedicated proxies per Gateway object
 
 ---
 
-# The honest downsides
+# Migration strategy from Ingress
 
-- **More objects.** One Ingress becomes Gateway + Route, sometimes + ReferenceGrant.
-- **Migration is real work.** No reliable automatic translator for annotation-heavy setups.
-- **Policy is still the frontier.** `BackendTLSPolicy` is standard; auth, rate limiting, WAF and mTLS-to-backend remain **implementation-specific CRDs**. Portability stops there.
-  - Concretely: Traefik plugs its own `Middleware` CRDs into an HTTPRoute as an `ExtensionRef` filter. The route is portable; the filter reference is not.
-- **Ecosystem maturity gap.** cert-manager support is solid; ExternalDNS and some CI/CD tooling reached parity later.
-- **Operational familiarity.** Your on-call knows how to debug ingress-nginx at 3am. That knowledge does not transfer for free.
+1. **Audit existing Ingresses:**
+   - How many rely on custom annotations (`rewrite`, `cors`, `canary`)?
+   - How many use `configuration-snippet` (must be converted to extension filters)?
+2. **Automated translation tool:**
+   - Use [kubernetes-sigs/ingress2gateway](https://github.com/kubernetes-sigs/ingress2gateway):
+     ```bash
+     ingress2gateway print --providers ingress-nginx > gateway-resources.yaml
+     ```
+3. **Coexistence:**
+   - Ingress and Gateway API run side-by-side on the same Traefik data plane without conflict.
 
-<!--
-Do not skip this slide. Credibility in the room depends on it, and if you are
-delivering this to a customer it pre-empts the objection they were saving for
-the end. The policy-attachment point is the genuinely unresolved one.
--->
+---
+
+# The honest downsides of Gateway API
+
+- **More objects to manage:** 3 YAML files instead of 1 for a simple exposure
+- **CRD lifecycle overhead:** Upgrades must consider CRD versions and channel separation
+- **Ecosystem maturity:** Tools like ExternalDNS and Cert-Manager support Gateway API, but legacy Helm charts still ship `Ingress` templates
+- **Implementation variance on extended features:** Core is 100% portable; regex path matching and custom timeouts require conformance profile checks
 
 ---
 
 # When to stay on Ingress
 
-Gateway API is not automatically correct. Stay put if:
+- Simple cluster with a single development team and no multi-tenant delegation needs
+- Basic HTTP path routing without canary, gRPC, or header matching requirements
+- Established GitOps pipelines using mature `Ingress` charts that work reliably
 
-- Pure host/path routing, no annotations beyond TLS — **Ingress already does the job**
-- Small team, no persona separation — the role model buys you nothing
-- Ingress controller deeply wired into existing tooling with no migration budget
-- Your platform's supported path has not caught up yet
-
-**Migrate when you have a driver:** multi-tenancy, canary requirements, L4 routing, mesh convergence, or an RBAC problem you cannot solve today.
-
-<span class="warn">On RKE2, ingress-nginx EOL is now that driver whether you wanted one or not.</span>
+**When to move to Gateway API:**
+- Multi-team clusters where platform and app responsibilities must be decoupled
+- Modern protocols needed (gRPC, WebSocket, TCP/UDP)
+- Advanced traffic splitting, header injection, or path rewrites without proprietary annotations
 
 ---
 
-# The RKE2 picture just changed
+# The session in one command
 
-**ingress-nginx went End-of-Life in March 2026.**
-
-- Deprecated in RKE2 v1.36; no new images with fixes after March 2026
-- **From v1.36, Traefik is the default ingress controller for new clusters**
-- Rancher Prime customers get an extended support window — that is the commercial answer, not a technical one
-- SUSE publishes an official **ingress-nginx → Traefik migration guide**
-
-For your customers this is no longer "should we look at Gateway API someday."
-It is **"we have to touch the ingress layer anyway."**
-
-<span class="warn">That is the strongest migration driver in this deck, and it has a date on it.</span>
-
-<!--
-This slide reframes the whole session for a SUSE audience. Before March 2026 the
-Gateway API conversation was strategic. Now there is a forced migration on the
-table, and the question becomes "while we're in here, do we go to Gateway API
-or just swap controllers?" That is a consulting conversation. Lead with it if
-the room is customer-side.
--->
-
----
-
-# RKE2 specifics
-
-- Ingress controller is selected at server level:
-  `ingress-controller: traefik | none` in `/etc/rancher/rke2/config.yaml`
-- Tune with a **`HelmChartConfig`** named `rke2-traefik` in `kube-system` — never edit the
-  Deployment directly, helm-controller reverts it
-- **On RKE2, Gateway API means Traefik.** Enable it in the same HelmChartConfig:
-
-```yaml
-providers:
-  kubernetesGateway:
-    enabled: true
+```bash
+cd ~/lab
+git log --oneline
+git diff HEAD~6 HEAD
 ```
 
-- Version pairing: **Traefik v3.7.x → Gateway API v1.5**, v3.6.x → v1.4
-- Standard channel CRDs arrive with the `traefik-crds` AddOn.
-  **Experimental channel must be installed separately** and enabled with `experimentalChannel: true`
-- `--enable-servicelb` gives you ServiceLB (klipper-lb) so `LoadBalancer` Services work on bare VMs
-
----
-
-# Two RKE2 gotchas worth writing down
-
-**1. CRD deletion on rollback.**
-Before the April 2026 releases (v1.33.11+rke2r1, v1.34.7+rke2r1, v1.35.4+rke2r1), disabling Traefik
-after having enabled it **removes the Gateway API CRDs** — and with them every Gateway and Route
-in the cluster.
-
-<span class="warn">On an affected release, do not disable Traefik or uninstall `traefik-crds` while you have Gateway API resources you want to keep.</span>
-
-**2. Traefik lags the spec.**
-Traefik v3.7 tracks Gateway API v1.5 while upstream is at v1.6.1. So `TCPRoute` and `UDPRoute`
-went GA upstream but are **not yet in your supported RKE2 path**.
-
-**Consulting rule:** check the pairing table before you promise a customer a feature.
-
----
-
-# Rancher
-
-- Rancher's own management-server ingress still uses `Ingress` — Gateway API is for your workloads
-- Rancher UI has no first-class Gateway API view; manage via `kubectl`, Fleet, or the CRD browser
-- Rancher **Projects** map naturally onto the shared-Gateway model in Lab 4
-
-<span class="small">Rancher's Gateway API tooling is moving. Re-check before every delivery.</span>
-
----
-
-# Choosing an implementation
-
-| Implementation | Status on RKE2 | Notes |
-|---|---|---|
-| **Traefik** | **Packaged & supported** | The RKE2 answer. Default controller from v1.36. One HelmChartConfig away. |
-| Cilium | Viable | Only if Cilium is already your CNI. Never change CNI for this. |
-| Istio | Viable | Right call when you want mesh + ingress on one API. Heavier. |
-| Envoy Gateway | Bring-your-own | Pure Gateway API, excellent status conditions. **Not** SUSE-packaged. |
-| NGINX Gateway Fabric | Bring-your-own | Different project from the EOL ingress-nginx. Not SUSE-packaged. |
-
-**We use Traefik in the labs** — because on RKE2 it is one config flag, and because it is what your
-customer will actually run in production.
-
-<!--
-Be straight with the room about this. Envoy Gateway is arguably the nicer
-teaching vehicle — its status conditions are more verbose and its per-Gateway
-infrastructure provisioning makes the model more obvious. But shipping a SUSE
-training that demos an unsupported implementation creates a support conversation
-you do not want. Teach the supported path; mention the others exist.
--->
-
----
-
-# One architectural difference worth knowing
-
-**Traefik: static infrastructure.**
-One Traefik deployment. Gateway listeners bind to pre-existing **entryPoints** (`web`, `websecure`).
-A listener on a port with no matching entryPoint does not become `Programmed`.
-
-**Envoy Gateway, NGF: dynamic provisioning.**
-Each `Gateway` gets its own deployment and Service, provisioned on demand.
-
-This is not a defect in either. It is a real design split across conformant implementations, and it
-changes how you plan capacity, isolation, and blast radius.
-
-<span class="warn">Portable manifests do not mean identical operations.</span>
-
----
-
-# Migration strategy that works
-
-**On RKE2 today this is two migrations, not one. Do not conflate them.**
-
-1. **Controller swap** — ingress-nginx → Traefik, `Ingress` objects unchanged.
-   Follow SUSE's migration guide. This is forced work with a deadline.
-2. **API migration** — `Ingress` → `HTTPRoute`, controller unchanged.
-   This is optional, per-app, and on your schedule.
-
-For step 2:
-
-- **Run in parallel.** Ingress and HTTPRoute can serve the same app on the same Traefik.
-- **Translate one app.** Non-critical, annotation-light. Prove the pattern.
-- **Compare behaviour** — status codes, headers, redirects. Do not assume equivalence.
-- **Shift at the edge** — DNS or external LB. Rollback is a DNS change.
-- **Keep the Ingress object** until you have soaked in production.
-
-<span class="small">Lab 2 is step 2, on a single VM.</span>
+**What you will see in that diff:**
+- 10+ unstructured annotations replaced by clean, typed fields
+- Split-brain ingress files consolidated into weighted backends
+- Single-resource security flaws replaced by role-scoped RBAC
+- Multi-protocol gRPC and cross-namespace ReferenceGrant delegation
 
 ---
 
 <!-- _class: lead -->
 
-# Wrap-up
+# Summary
 
-## What to take back to your cluster
+1. **Ingress is feature-frozen** — Gateway API is the standard for Kubernetes service networking.
+2. **Role-oriented architecture** decouples Platform Operator (`Gateway`) from App Developer (`HTTPRoute`).
+3. **On RKE2, Traefik provides built-in Gateway API support** — enabled with a simple `HelmChartConfig`.
 
----
-
-# Decision checklist
-
-**Do you have a Gateway API driver?**
-
-- Multiple teams sharing one entry point → **yes**
-- Canary / progressive delivery without a mesh → **yes**
-- TCP, UDP, or gRPC routing → **yes**
-- Mesh and ingress on one API → **yes**
-- Host/path routing that already works → **not yet**
-
-**If yes:** pick an implementation, check its conformance report for the features you actually use, run it in parallel, migrate one app.
+**Questions & Discussion**
 
 ---
 
-# Resources
+<!-- _class: divider -->
 
-**Start here (RKE2)**
-- RKE2 networking services — `docs.rke2.io/networking/networking_services#gateway-api`
-- ingress-nginx → Traefik migration — `docs.rke2.io/reference/ingress_migration`
-- Traefik Gateway provider — `doc.traefik.io/traefik/reference/install-configuration/providers/kubernetes/kubernetes-gateway/`
-- Traefik Gateway routing — `doc.traefik.io/traefik/reference/routing-configuration/kubernetes/gateway-api/`
+# Appendices
 
-**Upstream**
-- `gateway-api.sigs.k8s.io` — spec, concepts, security model
-- `gateway-api.sigs.k8s.io/implementations/` — conformance reports. Read these before you recommend.
-- `#sig-network-gateway-api` on Kubernetes Slack
+## Reference & Additional Labs
 
-**Other implementations**
-- Envoy Gateway — `gateway.envoyproxy.io` · NGINX Gateway Fabric — `docs.nginx.com/nginx-gateway-fabric/`
+---
+
+# Appendix A — TLS Termination
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+  namespace: infra
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: websecure
+      port: 443
+      protocol: HTTPS
+      hostname: "*.podinfo.lab"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: podinfo-tls
+            namespace: infra
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+TLS secret is owned in `infra` namespace; `HTTPRoute` authors cannot modify certificates.
+
+---
+
+# Appendix B — Gateway API Condition Dictionary
+
+| Condition | Reason | What it means |
+|---|---|---|
+| `Accepted: True` | `Accepted` | Parent Gateway validated and accepted this route |
+| `Accepted: False` | `NotAllowedByListeners` | Gateway listener rejected route namespace or hostname |
+| `ResolvedRefs: True` | `ResolvedRefs` | All backend Services and ReferenceGrants exist |
+| `ResolvedRefs: False` | `BackendNotFound` | Referenced backend Service does not exist |
+| `ResolvedRefs: False` | `RefNotPermitted` | Cross-namespace reference without a `ReferenceGrant` |
+| `Programmed: True` | `Programmed` | Data plane has successfully synchronized configuration |
 
 ---
 
 <!-- _class: lead -->
 <!-- _paginate: false -->
 
-# Questions
+# Thank You
 
-**Florian Coulombel**
-SUSE Consulting — Lead Architect
-
-<!--
-Reserve at least 15 minutes. The three questions that always come:
-1. "Is Ingress deprecated?" — No. Frozen, not deprecated.
-2. "Which implementation should we pick?" — On RKE2, Traefik. It is packaged
-   and supported. Only go bring-your-own if there is a concrete feature gap,
-   and be explicit about the support consequences.
-3. "How do we do auth / rate limiting / WAF?" — Implementation-specific CRDs
-   today. Be honest that this is where portability currently stops.
--->
+## Kubernetes Gateway API on RKE2
+SUSE Consulting EMEA
