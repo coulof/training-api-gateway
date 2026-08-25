@@ -226,6 +226,8 @@ Genuinely useful. Genuinely portable. **For exactly this.**
 
 # Lab 1.3 & 1.4 — Deploy & Verify Ingress
 
+**Goal:** Deploy podinfo v1 and verify baseline HTTP routing through Ingress.
+
 1. **Deploy podinfo v1 and the baseline Ingress:**
    ```bash
    kubectl apply -f manifests/01-podinfo-v1.yaml
@@ -259,30 +261,27 @@ Genuinely useful. Genuinely portable. **For exactly this.**
 
 ---
 
-# The annotation explosion
+# The annotation explosion (Traefik)
 
 ```yaml
 metadata:
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "10"
-    nginx.ingress.kubernetes.io/proxy-body-size: 50m
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      more_set_headers "X-Request-Id: $req_id";
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: demo-strip-prefix@kubernetescrd
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.priority: "100"
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/service.weight: "10"
 ```
 
-- Untyped opaque strings — no schema, no `kubectl explain`, no admission validation
-- Typo silently does nothing
-- `configuration-snippet` = arbitrary config injected from a namespace-scoped object
-
-<span class="warn">This last one has been a recurring source of CVEs and privilege-escalation findings.</span>
+- **Untyped string syntax** — no schema validation, no `kubectl explain`, no admission checks
+- **Brittle provider syntax** — `namespace-name@kubernetescrd` silently fails on typos
+- **CRD fragmentation** — basic routing forces vendors to build proprietary CRDs (`Middleware`, `IngressRoute`) attached via opaque annotations
 
 <!--
-Worth 30 seconds: the config-snippet class of vulnerability is exactly what happens
-when you let an app-team-owned object inject raw dataplane config. It is an
-architectural consequence of the single-resource model, not an NGINX bug.
+Presenter note:
+Show how Traefik handled Ingress limitations: instead of config-snippets, Traefik
+invented external CRDs attached through string lists with @kubernetescrd suffixes.
 -->
 
 ---
@@ -312,24 +311,27 @@ Notice the annotation syntax: `demo-strip-shop@kubernetescrd`. A typo in the nam
 
 <!-- _class: lab -->
 
-# Lab 2.2 & 2.3 — Canary Attempt
+# Lab 2.2 & 2.3 — Canary with Traefik IngressRoute
+
+**Goal:** Configure a working 90/10 canary split using Traefik's IngressRoute CRD and observe vendor lock-in.
 
 1. **Deploy podinfo v2 (canary backend, orange color):**
    ```bash
    kubectl apply -f manifests/04-podinfo-v2.yaml
    ```
-2. **In Ingress, canary requires a duplicate Ingress object:**
+2. **In Traefik, canary requires a proprietary IngressRoute CRD:**
    ```bash
    kubectl apply -f manifests/05-ingress-canary.yaml
    ```
-3. **Measure traffic distribution:**
+3. **Measure traffic distribution (50 requests):**
    ```bash
    for i in $(seq 1 50); do
      curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message
    done | sort | uniq -c
+   # Expected: 45 VERSION ONE (90%) / 5 VERSION TWO (10%)
    ```
 
-*Lesson:* Ingress has no core canary field. Traefik ignores Ingress annotation weights unless you define a proprietary `TraefikService` CRD.
+*Lesson:* To do a simple canary in Ingress, you had to abandon the standard Kubernetes API and adopt Traefik-specific CRDs.
 
 ---
 

@@ -402,57 +402,51 @@ kubectl apply -f 04-podinfo-v2.yaml
 kubectl -n demo rollout status deploy/podinfo-v2
 ```
 
-Now the canary. **There is no field for this.** You create a *second, duplicate Ingress object*:
+Now the canary. Standard Kubernetes `Ingress` (`networking.k8s.io/v1`) has **no core canary or weight field**. To perform weighted traffic splitting in Traefik, you must use Traefik's proprietary `IngressRoute` CRD:
 
 ```bash
 cat > 05-ingress-canary.yaml <<'EOF'
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: podinfo-canary
   namespace: demo
   annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: demo-strip-shop@kubernetescrd
-    traefik.ingress.kubernetes.io/router.entrypoints: web
-    # weighting on Ingress is implementation-specific and NOT portable
-    traefik.ingress.kubernetes.io/service.weight: "10%"
+    kubernetes.io/ingress.class: traefik
 spec:
-  ingressClassName: traefik
-  rules:
-    - host: podinfo.lab
-      http:
-        paths:
-          - path: /shop
-            pathType: Prefix
-            backend:
-              service:
-                name: podinfo-v2
-                port:
-                  number: 9898
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`podinfo.lab`) && PathPrefix(`/shop`)
+      kind: Rule
+      middlewares:
+        - name: strip-shop
+      services:
+        - name: podinfo-v1
+          port: 9898
+          weight: 90
+        - name: podinfo-v2
+          port: 9898
+          weight: 10
 EOF
 
 kubectl apply -f 05-ingress-canary.yaml
 ```
 
-Measure it:
+Measure it (50 requests):
 
 ```bash
-for i in $(seq 1 100); do
-  curl -s -H 'Host: podinfo.lab' $GW_URL/shop/ | jq -r .message
+for i in $(seq 1 50); do
+  curl -s -H 'Host: podinfo.lab' $GW_URL/shop | jq -r .message
 done | sort | uniq -c
 ```
 
-> **⚠ VERIFY — this step is expected to be unsatisfying.**
-> Traefik's weighted routing is designed around its own `TraefikService` CRD, not around Ingress
-> annotations. You may see a 50/50 split, or all-v1, rather than 90/10.
->
-> **If it does not weight correctly, that is the lesson, not a lab bug.** Record what you observe.
-> The teaching point stands either way: there is no portable, typed way to express "10% of traffic"
-> in the Ingress API, and each controller invented something different — ingress-nginx used
-> `canary-weight` on a duplicate object, Traefik pushes you to a `TraefikService` CRD.
->
-> If you want a working weighted split on Ingress for the demo, do it with a `TraefikService` and
-> reference it from the Ingress — and notice that you have now left the Kubernetes API entirely.
+*Expected output:* ~45 `VERSION ONE` (90%) and ~5 `VERSION TWO` (10%).
+
+> **The Lesson:** While this works, notice what happened: to do a simple 10% canary split,
+> **you had to abandon the standard Kubernetes Ingress API** and use Traefik-specific CRDs.
+> If you migrate to NGINX, HAProxy, or Envoy, this configuration is completely invalid.
+> **Gateway API (Lab 5)** solves this by standardizing `weight` in the core Kubernetes spec.
 
 ## 2.3 — Task three: the RBAC problem
 
@@ -585,13 +579,15 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
+    service:
+      type: LoadBalancer
     providers:
       kubernetesGateway:
         enabled: true
 EOF
 
 kubectl apply -f 09-helmchartconfig-traefik.yaml
-kubectl -n kube-system rollout status deploy/traefik --timeout=5m
+kubectl -n kube-system rollout status daemonset/rke2-traefik --timeout=5m
 ```
 
 > **Why not the manifests directory?** RKE2 also reads packaged-component config from

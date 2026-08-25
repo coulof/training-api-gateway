@@ -55,6 +55,8 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
+    service:
+      type: LoadBalancer
     providers:
       kubernetesGateway:
         enabled: true

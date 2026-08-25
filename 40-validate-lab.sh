@@ -64,7 +64,8 @@ title "Lab 2 — annotations, canary attempt, RBAC problem"
 check "Middleware strip-shop exists"    "kubectl -n ${DEMO_NS} get middleware.traefik.io strip-shop"
 check "middlewares annotation present" \
       "kubectl -n ${DEMO_NS} get ingress podinfo -o jsonpath='{.metadata.annotations}' | grep -q kubernetescrd"
-soft_check "canary Ingress exists"      "kubectl -n ${DEMO_NS} get ingress podinfo-canary"
+soft_check "canary Ingress / IngressRoute exists" \
+      "kubectl -n ${DEMO_NS} get ingress podinfo-canary >/dev/null 2>&1 || kubectl -n ${DEMO_NS} get ingressroute podinfo-canary >/dev/null 2>&1"
 check "ServiceAccount dev exists"       "kubectl -n ${DEMO_NS} get sa dev"
 check "Role ingress-editor exists"      "kubectl -n ${DEMO_NS} get role ingress-editor"
 # The whole point of Lab 2.3: this permission SHOULD exist and IS the problem.
@@ -181,14 +182,14 @@ Copy these into AGENT.md and drop the corresponding ⚠ VERIFY markers.
 AEOF
 
   echo
-  info "Lab 2.2 — does Ingress annotation weighting actually work?"
-  if kubectl -n "${DEMO_NS}" get ingress podinfo-canary >/dev/null 2>&1; then
-    for _ in $(seq 1 60); do
-      hcurl podinfo.lab /shop/ | jq -r '.message // "ERR"'
+  info "Lab 2.2 — does Traefik IngressRoute canary weighting work (90/10)?"
+  if kubectl -n "${DEMO_NS}" get ingress podinfo-canary >/dev/null 2>&1 || kubectl -n "${DEMO_NS}" get ingressroute podinfo-canary >/dev/null 2>&1; then
+    for _ in $(seq 1 50); do
+      hcurl podinfo.lab /shop | jq -r '.message // "ERR"'
     done | sort | uniq -c | sed 's/^/      /'
-    info "If this is not close to 90/10, annotation weighting does NOT work — that is the lesson."
+    info "With Traefik IngressRoute, expect ~45 VERSION ONE (90%) and ~5 VERSION TWO (10%)."
   else
-    info "      (canary Ingress not applied; run Lab 2.2 first)"
+    info "      (canary not applied; run Lab 2.2 first)"
   fi
 
   echo
