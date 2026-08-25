@@ -1,0 +1,23 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: route-editor
+  namespace: demo
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "grpcroutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-edit-routes
+  namespace: demo
+subjects:
+  - kind: ServiceAccount
+    name: dev
+    namespace: demo
+roleRef:
+  kind: Role
+  name: route-editor
+  apiGroup: rbac.authorization.k8s.io

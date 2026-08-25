@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev
+  namespace: demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ingress-editor
+  namespace: demo
+rules:
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-edit-ingress
+  namespace: demo
+subjects:
+  - kind: ServiceAccount
+    name: dev
+    namespace: demo
+roleRef:
+  kind: Role
+  name: ingress-editor
+  apiGroup: rbac.authorization.k8s.io

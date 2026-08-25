@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: podinfo
+  namespace: demo
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: demo-strip-shop@kubernetescrd
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: podinfo.lab
+      http:
+        paths:
+          - path: /shop
+            pathType: Prefix
+            backend:
+              service:
+                name: podinfo-v1
+                port:
+                  number: 9898

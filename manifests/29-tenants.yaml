@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: team-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_UI_MESSAGE
+              value: "TEAM A"
+            - name: PODINFO_UI_COLOR
+              value: "#2453FF"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: team-a
+spec:
+  selector:
+    app: app
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-b
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: team-b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_UI_MESSAGE
+              value: "TEAM B"
+            - name: PODINFO_UI_COLOR
+              value: "#FE7C3F"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: team-b
+spec:
+  selector:
+    app: app
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http

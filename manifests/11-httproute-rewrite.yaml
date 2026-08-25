@@ -1,0 +1,33 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: podinfo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: infra
+      sectionName: web
+  hostnames:
+    - "podinfo.lab"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /shop
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: podinfo-v1
+          port: 9898
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: podinfo-v1
+          port: 9898

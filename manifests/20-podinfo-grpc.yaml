@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo-grpc
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podinfo
+      proto: grpc
+  template:
+    metadata:
+      labels:
+        app: podinfo
+        proto: grpc
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 9898
+            - name: grpc
+              containerPort: 9999
+          env:
+            - name: PODINFO_GRPC_PORT
+              value: "9999"
+            - name: PODINFO_GRPC_SERVICE_NAME
+              value: "podinfo"
+            - name: PODINFO_UI_MESSAGE
+              value: "GRPC BACKEND"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo-grpc
+  namespace: demo
+spec:
+  selector:
+    app: podinfo
+    proto: grpc
+  ports:
+    - name: grpc
+      port: 9999
+      targetPort: grpc
+      appProtocol: kubernetes.io/h2c
