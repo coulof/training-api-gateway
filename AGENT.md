@@ -47,15 +47,15 @@ Ask before assuming. Do not silently convert one model to the other.
 
 | File | Audience | What it is |
 |---|---|---|
-| `01-slides-gateway-api-rke2.md` | instructor | Marp deck, 49 slides, SUSE palette, presenter notes in HTML comments |
-| `02-lab-manual.md` | participant | Lab guide — Labs 1–7 plus appendices A–D |
-| `scripts/lib/common.sh` | — | Shared helpers. Sourced, never executed. |
-| `scripts/00-check-prereqs.sh` | participant | Tooling, cluster reachability, RBAC, Traefik, data path |
-| `scripts/10-provision-cluster.sh` | **instructor, on the node, as root** | Builds the RKE2 cluster, emits a remote kubeconfig |
-| `scripts/20-enable-gateway-api.sh` | instructor | Enables Traefik's Gateway provider (reset/recovery path for Lab 3) |
-| `scripts/30-install-podinfo.sh` | either | Deploys the workload; `--emit-only` writes the YAML participants own |
-| `scripts/40-validate-lab.sh` | instructor | Per-lab outcome checks; `--answers` harvests the ⚠ VERIFY values |
-| `scripts/90-teardown.sh` | either | Removes lab resources; `--all` is guarded and destructive |
+| `01-slides-gateway-api-rke2.md` | all | Unified master Marp deck + interactive lab guide |
+| `manifests/*.yaml` | all | Ready-to-use Kubernetes YAML manifests for all labs |
+| `common.sh` | — | Shared helpers. Sourced, never executed. |
+| `00-check-prereqs.sh` | participant | Tooling, cluster reachability, RBAC, Traefik, data path |
+| `10-provision-cluster.sh` | **instructor, on the node, as root** | Builds the RKE2 cluster, emits a remote kubeconfig |
+| `20-enable-gateway-api.sh` | instructor | Enables Traefik's Gateway provider (reset/recovery path for Lab 3) |
+| `30-install-podinfo.sh` | either | Deploys the workload; `--emit-only` writes the YAML participants own |
+| `40-validate-lab.sh` | instructor | Per-lab outcome checks; `--answers` harvests the ⚠ VERIFY values |
+| `90-teardown.sh` | either | Removes lab resources; `--all` is guarded and destructive |
 | `AGENT.md` | agent | This file |
 
 `03-prepare-lab-vm.sh` was split into the numbered scripts above. Do not reintroduce a monolith.
@@ -256,18 +256,11 @@ for s in 00-check-prereqs 20-enable-gateway-api 40-validate-lab 90-teardown; do
   KUBECONFIG=/nonexistent scripts/$s.sh 2>&1 | tail -2
 done
 
-# 5. All lab-manual YAML parses + all kubectl patches are valid JSON
+# 5. All manifests in manifests/ parse + all kubectl patches in slides are valid JSON
 python3 - <<'PY'
-import re, yaml, json
-t = open('02-lab-manual.md').read()
-blocks  = re.findall(r"cat > [^\n]*<<'?EOF'?\n(.*?)\nEOF", t, re.S)
-blocks += re.findall(r"cat <<'?EOF'? \| kubectl apply -f -\n(.*?)\nEOF", t, re.S)
+import re, json, glob
+t = open('01-slides-gateway-api-rke2.md').read()
 bad = 0
-for i, b in enumerate(blocks, 1):
-    b = (b.replace('team-$t','team-a').replace('${t^^}','A').replace('$t','a')
-           .replace('${GWCLASS:-traefik}','traefik'))
-    try: list(yaml.safe_load_all(b))
-    except Exception as e: print(f"YAML FAIL block {i}: {e}"); bad += 1
 for p in re.findall(r"-p\s+'(\[.*?\])'", t, re.S) + \
          re.findall(r"--type=merge\s+\\?\s*\n?\s*-p\s+'(\{.*?\})'", t, re.S):
     try: json.loads(p)

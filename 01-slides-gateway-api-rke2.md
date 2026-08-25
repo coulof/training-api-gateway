@@ -337,19 +337,22 @@ Notice the annotation syntax: `demo-strip-shop@kubernetescrd`. A typo in the nam
 
 <!-- _class: lab -->
 
-# Lab 2.4 — The RBAC Security Flaw
+# Lab 2.4 — The RBAC Delegation Problem
 
-**Goal:** Expose why Ingress fails multi-team security boundaries.
+**Goal:** Delegate path routing management to the application developer in their namespace.
 
-1. **Create developer ServiceAccount and Ingress edit Role:**
+1. **Grant developer permission to manage Ingress in `demo`:**
    ```bash
    kubectl apply -f manifests/06-rbac-ingress.yaml
+   DEV="--as=system:serviceaccount:demo:dev"
+   kubectl $DEV -n demo auth can-i update ingress   # yes
    ```
-2. **Dev tests their permissions:**
+2. **The Security Flaw (Deduction):** Developer can hijack hostnames and TLS secrets:
    ```bash
-   kubectl auth can-i update ingress -n demo --as=system:serviceaccount:demo:dev
+   kubectl $DEV -n demo patch ingress podinfo --type=json \
+     -p '[{"op":"replace","path":"/spec/rules/0/host","value":"api.corp.example.com"}]'
    ```
-3. **The flaw:** Because routing rules, hostnames, and TLS live in one object, `dev` can overwrite hostnames and TLS secrets for the entire platform.
+3. **Takeaway:** Ingress conflates routing rules with platform DNS & TLS in a single object.
 4. **Commit Lab 2 state:**
    ```bash
    cp manifests/03-middleware-strip.yaml manifests/04-podinfo-v2.yaml \
