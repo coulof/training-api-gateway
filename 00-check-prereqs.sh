@@ -12,7 +12,7 @@
 # Verifies local tooling, cluster reachability, RBAC, and that Traefik is
 # serving. Exits non-zero if anything required is missing.
 #
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 title "Local tooling"
 
