@@ -12,7 +12,11 @@
 # Use this to pre-seed, to catch up a participant who fell behind, or with
 # --emit-only to generate the files they will then own.
 #
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh" ]]; then
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+else
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+fi
 
 WITH_GRPC=no
 WITH_TENANTS=no

@@ -87,9 +87,76 @@ require_kubeconfig() {
 
 current_context() { kubectl config current-context 2>/dev/null || echo "(none)"; }
 
+# ---------------------------------------------------------------------------
+# Traefik workload and service discovery helpers
+# ---------------------------------------------------------------------------
+
+traefik_service_name() {
+  if kubectl -n kube-system get svc rke2-traefik >/dev/null 2>&1; then
+    echo "rke2-traefik"
+  elif kubectl -n kube-system get svc traefik >/dev/null 2>&1; then
+    echo "traefik"
+  else
+    local s
+    s="$(kubectl -n kube-system get svc -l app.kubernetes.io/name=traefik -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    echo "${s:-traefik}"
+  fi
+}
+
+traefik_workload() {
+  if kubectl -n kube-system get daemonset rke2-traefik >/dev/null 2>&1; then
+    echo "daemonset/rke2-traefik"
+  elif kubectl -n kube-system get deploy rke2-traefik >/dev/null 2>&1; then
+    echo "deploy/rke2-traefik"
+  elif kubectl -n kube-system get deploy traefik >/dev/null 2>&1; then
+    echo "deploy/traefik"
+  elif kubectl -n kube-system get daemonset traefik >/dev/null 2>&1; then
+    echo "daemonset/traefik"
+  else
+    local ds dp
+    ds="$(kubectl -n kube-system get daemonset -l app.kubernetes.io/name=traefik -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [[ -n "$ds" ]]; then
+      echo "daemonset/$ds"
+      return
+    fi
+    dp="$(kubectl -n kube-system get deploy -l app.kubernetes.io/name=traefik -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [[ -n "$dp" ]]; then
+      echo "deploy/$dp"
+      return
+    fi
+    echo "deploy/traefik"
+  fi
+}
+
+traefik_ready() {
+  local wl
+  wl="$(traefik_workload)"
+  local ready=0
+  if [[ "$wl" =~ ^daemonset/ ]]; then
+    ready="$(kubectl -n kube-system get "$wl" -o jsonpath='{.status.numberReady}' 2>/dev/null || echo 0)"
+  else
+    ready="$(kubectl -n kube-system get "$wl" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)"
+  fi
+  [[ "${ready:-0}" -ge 1 ]]
+}
+
+traefik_image() {
+  local wl
+  wl="$(traefik_workload)"
+  kubectl -n kube-system get "$wl" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "unknown"
+}
+
+traefik_entrypoints() {
+  local svc
+  svc="$(traefik_service_name)"
+  kubectl -n kube-system get svc "$svc" -o jsonpath='{range .spec.ports[*]}{.name}:{.port} {end}' 2>/dev/null || echo "<none>"
+}
+
 # Traefik's LoadBalancer address, empty if not assigned.
 traefik_lb_addr() {
-  kubectl -n kube-system get svc traefik \
+  local svc
+  svc="$(traefik_service_name)"
+  kubectl -n kube-system get svc "$svc" \
     -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true
 }
 
@@ -121,7 +188,9 @@ resolve_gw_url() {
 
 PF_PID=""
 start_port_forward() {
-  kubectl -n kube-system port-forward svc/traefik "${PF_PORT}:80" >/dev/null 2>&1 &
+  local svc
+  svc="$(traefik_service_name)"
+  kubectl -n kube-system port-forward "svc/${svc}" "${PF_PORT}:80" >/dev/null 2>&1 &
   PF_PID=$!
   trap stop_port_forward EXIT
   local i

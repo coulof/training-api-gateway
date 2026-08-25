@@ -15,7 +15,11 @@
 #   whether Ingress annotation weighting works, whether h2c is honoured,
 #   and the exact status codes for denied references.
 #
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh" ]]; then
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+else
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+fi
 
 WANT=()
 ANSWERS=no
@@ -166,10 +170,10 @@ cat <<AEOF
 Copy these into AGENT.md and drop the corresponding ⚠ VERIFY markers.
 
   RKE2 / kubelet        : $(kubectl get node -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
-  Traefik image         : $(kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null)
+  Traefik image         : $(traefik_image)
   Gateway API bundle    : $(kubectl get crd gateways.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}' 2>/dev/null || echo '(CRDs absent)')
   GatewayClass name     : ${GWC}
-  Traefik entryPoints   : $(kubectl -n kube-system get svc traefik -o jsonpath='{range .spec.ports[*]}{.name}:{.port} {end}' 2>/dev/null)
+  Traefik entryPoints   : $(traefik_entrypoints)
   Traefik LB address    : $(traefik_lb_addr || echo '<none>')
   Data path used here   : ${GW_URL}
   ReferenceGrant vers.  : $(kubectl api-resources --api-group=gateway.networking.k8s.io 2>/dev/null | awk '/referencegrants/{print $3}' | tr '\n' ' ')

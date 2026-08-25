@@ -149,17 +149,21 @@ check "port-forward kube-system services" \
 
 title "Ingress data plane"
 
-check "Traefik deployment present"  "kubectl -n kube-system get deploy traefik"
-check "Traefik has ready replicas" \
-      "[ \"\$(kubectl -n kube-system get deploy traefik -o jsonpath='{.status.readyReplicas}')\" -ge 1 ]"
-check "Traefik Service is LoadBalancer" \
-      "[ \"\$(kubectl -n kube-system get svc traefik -o jsonpath='{.spec.type}')\" = LoadBalancer ]"
-check "ServiceLB assigned an address"  "[ -n \"\$(traefik_lb_addr)\" ]"
+check "Traefik workload present"      "[ -n \"\$(traefik_workload)\" ] && kubectl -n kube-system get \$(traefik_workload) >/dev/null 2>&1"
+check "Traefik has ready replicas"    "traefik_ready"
+check "Traefik Service present"       "kubectl -n kube-system get svc \$(traefik_service_name) >/dev/null 2>&1"
+soft_check "Traefik Service is LoadBalancer" \
+      "[ \"\$(kubectl -n kube-system get svc \$(traefik_service_name) -o jsonpath='{.spec.type}' 2>/dev/null)\" = LoadBalancer ]"
+soft_check "ServiceLB assigned an address"  "[ -n \"\$(traefik_lb_addr)\" ]"
 check "IngressClass 'traefik'"         "kubectl get ingressclass traefik"
 
-info "Traefik image   : $(kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo unknown)"
+info "workload        : $(traefik_workload)"
+info "Traefik image   : $(traefik_image)"
+SVC_NAME="$(traefik_service_name)"
+SVC_TYPE="$(kubectl -n kube-system get svc "$SVC_NAME" -o jsonpath='{.spec.type}' 2>/dev/null || echo unknown)"
+info "service         : ${SVC_NAME} (${SVC_TYPE})"
 info "Traefik LB addr : $(traefik_lb_addr || echo '<none>')"
-info "entryPoints     : $(kubectl -n kube-system get svc traefik -o jsonpath='{range .spec.ports[*]}{.name}:{.port} {end}' 2>/dev/null)"
+info "entryPoints     : $(traefik_entrypoints)"
 
 title "Reaching the Gateway from here"
 

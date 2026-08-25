@@ -12,7 +12,11 @@
 # /var/lib/rancher/rke2/server/manifests/. Both work; only this one works over
 # a kubeconfig, which is why the lab uses it.
 #
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh" ]]; then
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+else
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+fi
 
 require_cmd kubectl "Install kubectl."
 require_kubeconfig
@@ -24,7 +28,8 @@ if gateway_api_enabled; then
 else
   info "No Gateway API CRDs yet."
 fi
-info "Traefik image: $(kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo unknown)"
+info "Traefik image: $(traefik_image)"
+info "workload     : $(traefik_workload)"
 
 cat <<'BANNER'
 
@@ -57,7 +62,7 @@ HCEOF
 
 log "waiting for helm-controller to redeploy Traefik"
 sleep 5
-kubectl -n kube-system rollout status deploy/traefik --timeout=5m \
+kubectl -n kube-system rollout status "$(traefik_workload)" --timeout=5m \
   || warn "Traefik rollout did not complete cleanly — inspect: kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik"
 
 log "waiting for Gateway API CRDs"

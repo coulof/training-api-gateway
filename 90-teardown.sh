@@ -8,7 +8,11 @@
 #   ./90-teardown.sh              # remove lab namespaces and routes
 #   ./90-teardown.sh --all        # also remove the HelmChartConfig  (READ THE WARNING)
 #
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh" ]]; then
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+else
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+fi
 
 ALL=no
 [[ "${1:-}" == "--all" ]] && ALL=yes
