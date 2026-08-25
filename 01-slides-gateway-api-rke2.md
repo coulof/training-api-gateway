@@ -118,23 +118,33 @@ export GW_URL="http://127.0.0.1:8080"
 
 # Meet the workload: podinfo
 
-A lightweight Go microservice by Stefan Prodan ([github.com/stefanprodan/podinfo](https://github.com/stefanprodan/podinfo)) designed for cloud-native networking demos.
+A lightweight Go microservice by Stefan Prodan ([github.com/stefanprodan/podinfo](https://github.com/stefanprodan/podinfo)) designed for Kubernetes testing.
 
-- **Dynamic customization via environment variables:**
-  - `PODINFO_UI_MESSAGE`: Custom message in JSON & UI (`VERSION ONE`, `VERSION TWO`, `TEAM A`)
-  - `PODINFO_UI_COLOR`: UI badge accent (`#30BA78` green, `#FE7C3F` orange, `#2453FF` blue)
-- **Built-in inspection & health endpoints:**
-  - `GET /`: Returns JSON with hostname, version, message, color, and client IP
-  - `GET /headers`: Echoes request headers (validates header routing & filters)
-  - `GET /readyz`, `GET /healthz`: Kubernetes liveness and readiness probes
-- **Multi-protocol support:**
-  - **HTTP/1.1** on port `9898`
-  - **gRPC** on port `9999` with `grpc.health.v1.Health/Check`
+- **Dual-Engine Architecture:**
+  - **HTTP/1.1 REST Server (`:9898`)**: Handles web UI, API routing, and header echo
+  - **gRPC Server (`:9999`)**: Implements standard `grpc.health.v1.Health`
+- **Dynamic Configuration via Environment Variables:**
+  - `PODINFO_UI_MESSAGE`: Custom payload string (`VERSION ONE`, `VERSION TWO`, `TEAM A`)
+  - `PODINFO_UI_COLOR`: Color theme (`#30BA78` green, `#FE7C3F` orange, `#2453FF` blue)
+  - `PODINFO_GRPC_PORT`: Enables the internal gRPC listener on port `9999`
+- **Zero Application Bugs:** Eliminates test ambiguity — when `curl` returns a payload, you know immediately which backend, version, and headers were matched.
+
+---
+
+# How we use podinfo in the demos
+
+| Component & Endpoint | Demo Feature | Used In |
+|---|---|---|
+| `GET /` + `PODINFO_UI_MESSAGE` | **Canary weights & Multi-tenancy** (90/10 split, tenant routing) | Labs 1, 4, 5, 7 |
+| `GET /shop` + subpaths | **URL Path Rewrites** (`/shop/version` → `/version`) | Labs 2, 4 |
+| `GET /headers` | **Header Matching & Modifiers** (`X-Canary`, header injection) | Labs 4, 5 |
+| gRPC `:9999` (`Health/Check`) | **L7 GRPCRoute** with cleartext HTTP/2 (`h2c`) | Lab 6 |
+| `GET /readyz` | **Kubernetes Probes & Status condition handshake** | All Labs |
 
 <!--
 Presenter note:
-Explain why podinfo is our test harness: it echoes back everything Traefik and
-Gateway API do to the request (headers, path rewrites, traffic weights).
+Highlight that we deploy 4 distinct flavors of podinfo (v1 green, v2 orange, grpc, and tenant apps)
+to prove every dimension of the Gateway API specification.
 -->
 
 ---
