@@ -94,6 +94,17 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
         | $SUDO tar -xz -C /usr/local/bin grpcurl 2>/dev/null || warn "Could not extract grpcurl"
     fi
   fi
+
+  # 4. Kubeconfig setup (if running directly on the RKE2 host)
+  if [[ ! -f "$HOME/.kube/config" ]]; then
+    if [[ -f /etc/rancher/rke2/rke2.yaml ]] || $SUDO test -f /etc/rancher/rke2/rke2.yaml 2>/dev/null; then
+      log "Copying /etc/rancher/rke2/rke2.yaml to ~/.kube/config..."
+      mkdir -p "$HOME/.kube"
+      $SUDO cp /etc/rancher/rke2/rke2.yaml "$HOME/.kube/config"
+      $SUDO chown "$(id -u):$(id -g)" "$HOME/.kube/config" 2>/dev/null || true
+      chmod 600 "$HOME/.kube/config"
+    fi
+  fi
 fi
 
 title "Local tooling"
