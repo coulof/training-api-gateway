@@ -75,15 +75,20 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
     GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
     ARCH="$(uname -m)"
     case "$ARCH" in
-      x86_64|amd64) RPM_ARCH="x86_64"; TAR_ARCH="x86_64" ;;
+      x86_64|amd64) RPM_ARCH="amd64"; TAR_ARCH="x86_64" ;;
       aarch64|arm64) RPM_ARCH="arm64"; TAR_ARCH="arm64" ;;
-      *) RPM_ARCH="x86_64"; TAR_ARCH="x86_64" ;;
+      *) RPM_ARCH="amd64"; TAR_ARCH="x86_64" ;;
     esac
     GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
-    if command -v zypper >/dev/null 2>&1; then
-      $SUDO zypper --non-interactive install -y "$GRPCURL_RPM" || warn "Could not install grpcurl via zypper"
-    elif command -v rpm >/dev/null 2>&1; then
-      $SUDO rpm -Uvh "$GRPCURL_RPM" || warn "Could not install grpcurl via rpm"
+    if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
+      if command -v zypper >/dev/null 2>&1; then
+        $SUDO zypper --non-interactive --no-gpg-checks install -y --allow-unsigned-rpm /tmp/grpcurl.rpm >/dev/null 2>&1 \
+          || $SUDO rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
+          || warn "Could not install grpcurl RPM via zypper/rpm"
+      elif command -v rpm >/dev/null 2>&1; then
+        $SUDO rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 || warn "Could not install grpcurl RPM via rpm"
+      fi
+      rm -f /tmp/grpcurl.rpm
     else
       curl -sSL "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${TAR_ARCH}.tar.gz" \
         | $SUDO tar -xz -C /usr/local/bin grpcurl 2>/dev/null || warn "Could not extract grpcurl"

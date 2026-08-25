@@ -44,8 +44,19 @@ log "OS prerequisites & tooling"
 if command -v zypper >/dev/null 2>&1; then
   zypper --non-interactive install -y curl jq git helm tar gzip openssl >/dev/null
   GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
-  GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_amd64.rpm"
-  zypper --non-interactive install -y "$GRPCURL_RPM" >/dev/null || warn "Could not install grpcurl RPM"
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64|amd64) RPM_ARCH="amd64" ;;
+    aarch64|arm64) RPM_ARCH="arm64" ;;
+    *) RPM_ARCH="amd64" ;;
+  esac
+  GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
+  if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
+    zypper --non-interactive --no-gpg-checks install -y --allow-unsigned-rpm /tmp/grpcurl.rpm >/dev/null 2>&1 \
+      || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
+      || warn "Could not install grpcurl RPM"
+    rm -f /tmp/grpcurl.rpm
+  fi
 elif command -v apt-get >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq curl jq git helm tar gzip openssl >/dev/null
 else
