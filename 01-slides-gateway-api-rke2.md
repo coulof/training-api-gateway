@@ -180,20 +180,20 @@ Everything since has been the ecosystem paying interest on that decision.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: shop
+  name: podinfo
 spec:
   ingressClassName: traefik
   rules:
-    - host: shop.example.com
+    - host: podinfo.lab
       http:
         paths:
-          - path: /api
+          - path: /
             pathType: Prefix
             backend:
               service:
-                name: shop-api
+                name: podinfo-v1
                 port:
-                  number: 8080
+                  number: 9898
 ```
 
 Genuinely useful. Genuinely portable. **For exactly this.**
@@ -339,7 +339,7 @@ Notice the annotation syntax: `demo-strip-shop@kubernetescrd`. A typo in the nam
 
 # Lab 2.4 — The RBAC Delegation Problem
 
-**Goal:** Delegate path routing management to the application developer in their namespace.
+**Goal:** Delegate path routing to the application team in `demo`, then observe the security gap.
 
 1. **Grant developer permission to manage Ingress in `demo`:**
    ```bash
@@ -347,14 +347,17 @@ Notice the annotation syntax: `demo-strip-shop@kubernetescrd`. A typo in the nam
    DEV="--as=system:serviceaccount:demo:dev"
    kubectl $DEV -n demo auth can-i update ingress   # yes
    ```
-2. **The Security Flaw (Deduction):** Developer can hijack hostnames and TLS secrets:
+2. **The Security Flaw (Domain Hijack):** Developer can hijack a platform domain (`billing.podinfo.lab`):
    ```bash
    kubectl $DEV -n demo patch ingress podinfo --type=json \
-     -p '[{"op":"replace","path":"/spec/rules/0/host","value":"api.corp.example.com"}]'
+     -p '[{"op":"replace","path":"/spec/rules/0/host","value":"billing.podinfo.lab"}]'
+   # Test live: Developer now intercepts traffic for billing.podinfo.lab!
+   curl -s -H 'Host: billing.podinfo.lab' "$GW_URL/shop" | jq -r .message # VERSION ONE
    ```
-3. **Takeaway:** Ingress conflates routing rules with platform DNS & TLS in a single object.
-4. **Commit Lab 2 state:**
+3. **The Flaw:** Ingress cannot restrict which hostnames or TLS secrets a tenant namespace may claim.
+4. **Restore & Commit Lab 2:**
    ```bash
+   kubectl apply -f manifests/02-ingress-with-rewrite.yaml
    cp manifests/03-middleware-strip.yaml manifests/04-podinfo-v2.yaml \
       manifests/05-ingress-canary.yaml manifests/06-rbac-ingress.yaml ~/lab/
    cd ~/lab && git add -A && git commit -m "Lab 2: annotations, canary, and RBAC flaw"
