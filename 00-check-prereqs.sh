@@ -47,12 +47,40 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
   fi
 
   # 1. Package manager dependencies (git, jq, helm, curl, openssl, tar, gzip)
-  if command -v zypper >/dev/null 2>&1; then
+  if command -v dnf >/dev/null 2>&1; then
+    log "Installing system packages via dnf (git, jq, curl, openssl, tar, gzip)..."
+    $SUDO dnf install -y git curl openssl tar gzip jq 2>/dev/null \
+      || $SUDO dnf install -y git curl openssl tar gzip 2>/dev/null || warn "dnf install failed"
+  elif command -v yum >/dev/null 2>&1; then
+    log "Installing system packages via yum (git, jq, curl, openssl, tar, gzip)..."
+    $SUDO yum install -y git curl openssl tar gzip jq 2>/dev/null \
+      || $SUDO yum install -y git curl openssl tar gzip 2>/dev/null || warn "yum install failed"
+  elif command -v zypper >/dev/null 2>&1; then
     log "Installing system packages via zypper (git, jq, helm, curl, openssl, tar, gzip)..."
     $SUDO zypper --non-interactive install -y git jq helm curl tar gzip openssl || warn "zypper install failed"
   elif command -v apt-get >/dev/null 2>&1; then
     log "Installing system packages via apt-get (git, jq, helm, curl, openssl, tar, gzip)..."
     $SUDO apt-get update -qq && $SUDO apt-get install -y -qq git jq helm curl tar gzip openssl || warn "apt-get install failed"
+  fi
+
+  # Fallback for helm if not in OS repos (common on RHEL/CentOS)
+  if ! command -v helm >/dev/null 2>&1; then
+    log "Installing helm via official script..."
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | $SUDO bash >/dev/null 2>&1 || warn "Could not install helm"
+  fi
+
+  # Fallback for jq if EPEL is not enabled on RHEL
+  if ! command -v jq >/dev/null 2>&1; then
+    log "Installing jq binary..."
+    JQ_ARCH="amd64"
+    [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]] && JQ_ARCH="arm64"
+    if curl -sSL -o /tmp/jq "https://github.com/jqlang/jq/releases/latest/download/jq-linux-${JQ_ARCH}"; then
+      chmod 755 /tmp/jq
+      $SUDO install -m 755 /tmp/jq /usr/local/bin/jq 2>/dev/null || $SUDO mv /tmp/jq /usr/local/bin/jq
+      rm -f /tmp/jq
+    else
+      warn "Could not download jq"
+    fi
   fi
 
   # 2. kubectl CLI
@@ -81,7 +109,15 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
     esac
     GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
     if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
-      if command -v zypper >/dev/null 2>&1; then
+      if command -v dnf >/dev/null 2>&1; then
+        $SUDO dnf install -y --nogpgcheck /tmp/grpcurl.rpm >/dev/null 2>&1 \
+          || $SUDO rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
+          || warn "Could not install grpcurl RPM via dnf/rpm"
+      elif command -v yum >/dev/null 2>&1; then
+        $SUDO yum install -y --nogpgcheck /tmp/grpcurl.rpm >/dev/null 2>&1 \
+          || $SUDO rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
+          || warn "Could not install grpcurl RPM via yum/rpm"
+      elif command -v zypper >/dev/null 2>&1; then
         $SUDO zypper --non-interactive --no-gpg-checks install -y --allow-unsigned-rpm /tmp/grpcurl.rpm >/dev/null 2>&1 \
           || $SUDO rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
           || warn "Could not install grpcurl RPM via zypper/rpm"

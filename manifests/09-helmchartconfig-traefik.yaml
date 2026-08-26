@@ -10,3 +10,4 @@ spec:
     providers:
       kubernetesGateway:
         enabled: true
+        experimentalChannel: true

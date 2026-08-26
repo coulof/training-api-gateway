@@ -60,6 +60,7 @@ spec:
     providers:
       kubernetesGateway:
         enabled: true
+        experimentalChannel: true
 HCEOF
 
 log "waiting for helm-controller to redeploy Traefik"

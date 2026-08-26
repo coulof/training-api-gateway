@@ -41,16 +41,29 @@ die()  { printf '\n\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 log "OS prerequisites & tooling"
 # ---------------------------------------------------------------------------
-if command -v zypper >/dev/null 2>&1; then
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) RPM_ARCH="amd64" ;;
+  aarch64|arm64) RPM_ARCH="arm64" ;;
+  *) RPM_ARCH="amd64" ;;
+esac
+GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
+GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
+
+if command -v dnf >/dev/null 2>&1; then
+  dnf install -y git curl openssl tar gzip jq >/dev/null 2>&1 || dnf install -y git curl openssl tar gzip >/dev/null 2>&1
+  if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
+    dnf install -y --nogpgcheck /tmp/grpcurl.rpm >/dev/null 2>&1 || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 || warn "Could not install grpcurl RPM"
+    rm -f /tmp/grpcurl.rpm
+  fi
+elif command -v yum >/dev/null 2>&1; then
+  yum install -y git curl openssl tar gzip jq >/dev/null 2>&1 || yum install -y git curl openssl tar gzip >/dev/null 2>&1
+  if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
+    yum install -y --nogpgcheck /tmp/grpcurl.rpm >/dev/null 2>&1 || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 || warn "Could not install grpcurl RPM"
+    rm -f /tmp/grpcurl.rpm
+  fi
+elif command -v zypper >/dev/null 2>&1; then
   zypper --non-interactive install -y curl jq git helm tar gzip openssl >/dev/null
-  GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
-  ARCH="$(uname -m)"
-  case "$ARCH" in
-    x86_64|amd64) RPM_ARCH="amd64" ;;
-    aarch64|arm64) RPM_ARCH="arm64" ;;
-    *) RPM_ARCH="amd64" ;;
-  esac
-  GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
   if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
     zypper --non-interactive --no-gpg-checks install -y --allow-unsigned-rpm /tmp/grpcurl.rpm >/dev/null 2>&1 \
       || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
@@ -61,6 +74,10 @@ elif command -v apt-get >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq curl jq git helm tar gzip openssl >/dev/null
 else
   warn "Unknown package manager — ensure curl, jq, git, helm, tar, openssl are present."
+fi
+
+if ! command -v helm >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >/dev/null 2>&1 || warn "Could not install helm"
 fi
 
 if ! command -v kubectl >/dev/null 2>&1; then
