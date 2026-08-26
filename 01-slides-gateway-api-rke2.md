@@ -396,34 +396,39 @@ RBAC is `verb` × `resource` × `namespace`. It cannot express *"devs may change
 
 ---
 
-# The service mesh fork
+# 2017–2020: The service mesh fork
 
-Meshes needed exactly what Ingress lacked — so they built it themselves:
+When Istio (2017) and Linkerd ignited the **Service Mesh hype**, they needed what Kubernetes lacked: L7 routing, canary weights, retries, and mTLS between services.
 
-- Istio → `VirtualService`, `DestinationRule`, `Gateway`
-- Linkerd → `ServiceProfile`
-- Consul → `ServiceRouter`, `ServiceSplitter`
+Because `Ingress` was frozen in beta and `kube-proxy` was strictly L4, **every mesh invented its own API**:
 
-Consequence: **two routing APIs in the same cluster**
+- **Istio** → `VirtualService`, `DestinationRule`, `Gateway`
+- **Linkerd** → `ServiceProfile`, `TrafficSplit` (SMI)
+- **Consul** → `ServiceRouter`, `ServiceSplitter`
 
-- North-south (into the cluster) → `Ingress` + annotations
-- East-west (service to service) → mesh CRDs
+### The Result: Architectural Split-Brain
 
-Different syntax, different semantics, different RBAC, for the same conceptual operation.
+- **North-South (Edge Ingress)** → `Ingress` + opaque vendor annotations
+- **East-West (Service-to-Service)** → Complex, proprietary mesh CRDs
+
+<span class="warn">Two incompatible APIs in the same cluster for the exact same routing intent.</span>
 
 ---
 
-# Five years in beta & the 2020 freeze
+# 2015–2020: Two parallel timelines
 
-- 2015 — `extensions/v1beta1` in Kubernetes 1.1
-- 2019 — moved to `networking.k8s.io/v1beta1`
-- **August 2020 — GA & Frozen in Kubernetes 1.19 (`networking.k8s.io/v1`)**
+### Track 1: Ingress v1 was stuck in beta (2015–2020)
+- **Nov 2015 (K8s 1.1):** Introduced as `extensions/v1beta1`
+- **Mar 2019 (K8s 1.14):** Moved to `networking.k8s.io/v1beta1`
+- **Aug 2020 (K8s 1.19):** Graduated to GA (`networking.k8s.io/v1`) & **frozen**
+- *Nearly 5 years in beta:* Nobody was comfortable declaring the 2015 single-resource shape permanent.
 
-Nearly five years in beta is the community telling you something: *nobody was comfortable promising this API was the right shape.*
+### Track 2: The "Ingress v2" reboot (2019–Present)
+- **Nov 2019 (KubeCon San Diego):** SIG-Network launches the **"Ingress v2"** working group
+- **2020:** Formalized as **Service APIs**, then renamed **Gateway API**
+- **Oct 2023:** Gateway API reaches **v1.0 GA** (`GatewayClass`, `Gateway`, `HTTPRoute`)
 
-By the time it went GA, the replacement effort (Gateway API) had already started.
-
-**Ingress is not deprecated; it is finished.** No new features will ever be added.
+<span class="warn">Ingress was graduated to GA in 2020 to provide a stable legacy baseline while Gateway API was built.</span>
 
 ---
 
@@ -439,6 +444,24 @@ By the time it went GA, the replacement effort (Gateway API) had already started
 | **Jun 2026** | **v1.6** | **TCPRoute + UDPRoute GA**; experimental split to `gateway.networking.x-k8s.io` |
 
 <span class="small">Latest patch: v1.6.1 (16 July 2026). Standard channel cadence is 4 months.</span>
+
+---
+
+# The road ahead: 2026–2028+
+
+With L4–L7 core routing GA, SIG-Network is expanding into security, observability, and multi-cluster:
+
+- **Native Authentication & AuthZ ([GEP-1494](https://gateway-api.sigs.k8s.io/geps/gep-1494/)):** Standard `ExternalAuth` filter (OIDC, OAuth2, JWT, `ext_authz`) eliminating proprietary auth middlewares
+- **Standardized Telemetry ([GEP-4768](https://gateway-api.sigs.k8s.io/geps/gep-4768/)):** Declarative OpenTelemetry tracing and access logging across all implementations
+- **Multi-Cluster Ingress ([GEP-1748](https://gateway-api.sigs.k8s.io/geps/gep-1748/)):** Routing across clusters via `ServiceImport` (MCS-API)
+- **Non-Service Backends ([GEP-4894](https://gateway-api.sigs.k8s.io/geps/gep-4894/)):** Direct routing to S3 storage buckets, serverless functions, and external FQDNs
+- **Diagnostic Tooling ([GEP-2722](https://gateway-api.sigs.k8s.io/geps/gep-2722/)):** Dedicated `gwctl` CLI to inspect topology graphs and status conditions
+
+<!--
+Presenter note:
+Emphasize that Gateway API is becoming the universal L4-L7 application networking
+platform for Kubernetes — absorbing security, telemetry, and multi-cluster routing.
+-->
 
 ---
 
