@@ -7,16 +7,14 @@ spec:
   gatewayClassName: traefik
   listeners:
     - name: web
-      port: 80
+      port: 8000
       protocol: HTTP
-      hostname: "*.podinfo.lab"
       allowedRoutes:
         namespaces:
           from: All
     - name: websecure
-      port: 443
+      port: 8443
       protocol: HTTPS
-      hostname: "*.podinfo.lab"
       tls:
         mode: Terminate
         certificateRefs:

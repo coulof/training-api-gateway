@@ -593,22 +593,24 @@ Every Route reports, **per parent Gateway**:
 
 **Goal:** Establish the role-separated Gateway and HTTPRoute baseline.
 
-1. **Platform Operator deploys Gateway in `infra` namespace:**
+1. **Clean legacy Ingress & deploy Gateway in `infra`:**
    ```bash
-   kubectl apply -f manifests/10-gateway.yaml
-   kubectl -n infra get gateway web
+   kubectl -n demo delete ingress --all --ignore-not-found
+   kubectl apply -f manifests/10-gateway.yaml   # port 8000 binds Traefik web entrypoint
    ```
-2. **App Developer creates HTTPRoute in `demo` namespace:**
+2. **Developer creates HTTPRoute in `demo` & observes rejection:**
    ```bash
    kubectl apply -f manifests/11-httproute.yaml
+   kubectl -n demo describe httproute podinfo  # Reason: NotAllowedByListeners (from: Same)
    ```
-3. **Inspect the status condition handshake:**
+3. **Operator opens listener across namespaces:**
    ```bash
-   kubectl -n demo describe httproute podinfo
+   kubectl -n infra patch gateway web --type=json \
+     -p '[{"op":"replace","path":"/spec/listeners/0/allowedRoutes/namespaces/from","value":"All"}]'
    ```
-   Look for `Type: Accepted, Status: True` and `Type: ResolvedRefs, Status: True`.
-4. **Test routing:**
+4. **Verify handshake & test routing:**
    ```bash
+   kubectl -n demo describe httproute podinfo  # Accepted: True, ResolvedRefs: True
    curl -s -H 'Host: podinfo.lab' "$GW_URL/" | jq -r .message   # VERSION ONE
    ```
 
@@ -820,8 +822,7 @@ spec:
 listeners:
   - name: web
     protocol: HTTP
-    port: 80
-    hostname: "*.podinfo.lab"
+    port: 8000
     allowedRoutes:
       namespaces:
         from: Selector
@@ -1099,9 +1100,8 @@ spec:
   gatewayClassName: traefik
   listeners:
     - name: websecure
-      port: 443
+      port: 8443
       protocol: HTTPS
-      hostname: "*.podinfo.lab"
       tls:
         mode: Terminate
         certificateRefs:
