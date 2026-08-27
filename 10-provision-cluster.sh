@@ -51,19 +51,19 @@ GRPCURL_VERSION="${GRPCURL_VERSION:-1.9.3}"
 GRPCURL_RPM="https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${RPM_ARCH}.rpm"
 
 if command -v dnf >/dev/null 2>&1; then
-  dnf install -y git curl openssl tar gzip jq >/dev/null 2>&1 || dnf install -y git curl openssl tar gzip >/dev/null 2>&1
+  dnf install -y git curl openssl tar gzip jq bash-completion >/dev/null 2>&1 || dnf install -y git curl openssl tar gzip bash-completion >/dev/null 2>&1
   if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
     dnf install -y --nogpgcheck /tmp/grpcurl.rpm >/dev/null 2>&1 || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 || warn "Could not install grpcurl RPM"
     rm -f /tmp/grpcurl.rpm
   fi
 elif command -v yum >/dev/null 2>&1; then
-  yum install -y git curl openssl tar gzip jq >/dev/null 2>&1 || yum install -y git curl openssl tar gzip >/dev/null 2>&1
+  yum install -y git curl openssl tar gzip jq bash-completion >/dev/null 2>&1 || yum install -y git curl openssl tar gzip bash-completion >/dev/null 2>&1
   if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
     yum install -y --nogpgcheck /tmp/grpcurl.rpm >/dev/null 2>&1 || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 || warn "Could not install grpcurl RPM"
     rm -f /tmp/grpcurl.rpm
   fi
 elif command -v zypper >/dev/null 2>&1; then
-  zypper --non-interactive install -y curl jq git helm tar gzip openssl >/dev/null
+  zypper --non-interactive install -y curl jq git helm tar gzip openssl bash-completion >/dev/null
   if curl -sSL -f -o /tmp/grpcurl.rpm "$GRPCURL_RPM"; then
     zypper --non-interactive --no-gpg-checks install -y --allow-unsigned-rpm /tmp/grpcurl.rpm >/dev/null 2>&1 \
       || rpm -Uvh --force /tmp/grpcurl.rpm >/dev/null 2>&1 \
@@ -71,13 +71,19 @@ elif command -v zypper >/dev/null 2>&1; then
     rm -f /tmp/grpcurl.rpm
   fi
 elif command -v apt-get >/dev/null 2>&1; then
-  apt-get update -qq && apt-get install -y -qq curl jq git helm tar gzip openssl >/dev/null
+  apt-get update -qq && apt-get install -y -qq curl jq git helm tar gzip openssl bash-completion >/dev/null
 else
-  warn "Unknown package manager — ensure curl, jq, git, helm, tar, openssl are present."
+  warn "Unknown package manager — ensure curl, jq, git, helm, tar, openssl, bash-completion are present."
 fi
 
 if ! command -v helm >/dev/null 2>&1; then
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >/dev/null 2>&1 || warn "Could not install helm"
+fi
+
+# Configure bash completion
+if [[ -d /etc/bash_completion.d ]] || mkdir -p /etc/bash_completion.d 2>/dev/null; then
+  command -v kubectl >/dev/null 2>&1 && kubectl completion bash > /etc/bash_completion.d/kubectl 2>/dev/null || true
+  command -v helm >/dev/null 2>&1 && helm completion bash > /etc/bash_completion.d/helm 2>/dev/null || true
 fi
 
 if ! command -v kubectl >/dev/null 2>&1; then

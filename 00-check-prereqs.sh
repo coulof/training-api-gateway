@@ -46,21 +46,21 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
     SUDO="sudo"
   fi
 
-  # 1. Package manager dependencies (git, jq, helm, curl, openssl, tar, gzip)
+  # 1. Package manager dependencies (git, jq, helm, curl, openssl, tar, gzip, bash-completion)
   if command -v dnf >/dev/null 2>&1; then
-    log "Installing system packages via dnf (git, jq, curl, openssl, tar, gzip)..."
-    $SUDO dnf install -y git curl openssl tar gzip jq 2>/dev/null \
-      || $SUDO dnf install -y git curl openssl tar gzip 2>/dev/null || warn "dnf install failed"
+    log "Installing system packages via dnf (git, jq, curl, openssl, tar, gzip, bash-completion)..."
+    $SUDO dnf install -y git curl openssl tar gzip jq bash-completion 2>/dev/null \
+      || $SUDO dnf install -y git curl openssl tar gzip bash-completion 2>/dev/null || warn "dnf install failed"
   elif command -v yum >/dev/null 2>&1; then
-    log "Installing system packages via yum (git, jq, curl, openssl, tar, gzip)..."
-    $SUDO yum install -y git curl openssl tar gzip jq 2>/dev/null \
-      || $SUDO yum install -y git curl openssl tar gzip 2>/dev/null || warn "yum install failed"
+    log "Installing system packages via yum (git, jq, curl, openssl, tar, gzip, bash-completion)..."
+    $SUDO yum install -y git curl openssl tar gzip jq bash-completion 2>/dev/null \
+      || $SUDO yum install -y git curl openssl tar gzip bash-completion 2>/dev/null || warn "yum install failed"
   elif command -v zypper >/dev/null 2>&1; then
-    log "Installing system packages via zypper (git, jq, helm, curl, openssl, tar, gzip)..."
-    $SUDO zypper --non-interactive install -y git jq helm curl tar gzip openssl || warn "zypper install failed"
+    log "Installing system packages via zypper (git, jq, helm, curl, openssl, tar, gzip, bash-completion)..."
+    $SUDO zypper --non-interactive install -y git jq helm curl tar gzip openssl bash-completion || warn "zypper install failed"
   elif command -v apt-get >/dev/null 2>&1; then
-    log "Installing system packages via apt-get (git, jq, helm, curl, openssl, tar, gzip)..."
-    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq git jq helm curl tar gzip openssl || warn "apt-get install failed"
+    log "Installing system packages via apt-get (git, jq, helm, curl, openssl, tar, gzip, bash-completion)..."
+    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq git jq helm curl tar gzip openssl bash-completion || warn "apt-get install failed"
   fi
 
   # Fallback for helm if not in OS repos (common on RHEL/CentOS)
@@ -172,6 +172,22 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
       $SUDO chown "$(id -u):$(id -g)" "$HOME/.kube/config" 2>/dev/null || true
       chmod 600 "$HOME/.kube/config"
     fi
+  fi
+
+  # 7. Shell autocompletion setup (kubectl, helm, gwctl)
+  log "Configuring bash autocompletion (kubectl, helm, gwctl)..."
+  if [[ -d /etc/bash_completion.d ]] || $SUDO mkdir -p /etc/bash_completion.d 2>/dev/null; then
+    command -v kubectl >/dev/null 2>&1 && kubectl completion bash | $SUDO tee /etc/bash_completion.d/kubectl >/dev/null 2>&1 || true
+    command -v helm >/dev/null 2>&1 && helm completion bash | $SUDO tee /etc/bash_completion.d/helm >/dev/null 2>&1 || true
+    command -v gwctl >/dev/null 2>&1 && gwctl completion bash | $SUDO tee /etc/bash_completion.d/gwctl >/dev/null 2>&1 || true
+  fi
+
+  BASHRC="$HOME/.bashrc"
+  if [[ -f "$BASHRC" ]]; then
+    grep -q "kubectl completion bash" "$BASHRC" || echo 'command -v kubectl >/dev/null 2>&1 && source <(kubectl completion bash)' >> "$BASHRC"
+    grep -q "complete -o default -F __start_kubectl k" "$BASHRC" || echo 'alias k=kubectl && complete -o default -F __start_kubectl k' >> "$BASHRC"
+    grep -q "helm completion bash" "$BASHRC" || echo 'command -v helm >/dev/null 2>&1 && source <(helm completion bash)' >> "$BASHRC"
+    grep -q "gwctl completion bash" "$BASHRC" || echo 'command -v gwctl >/dev/null 2>&1 && source <(gwctl completion bash)' >> "$BASHRC"
   fi
 fi
 
