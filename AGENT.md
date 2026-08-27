@@ -47,18 +47,12 @@ Ask before assuming. Do not silently convert one model to the other.
 
 | File | Audience | What it is |
 |---|---|---|
-| `01-slides-gateway-api-rke2.md` | all | Unified master Marp deck + interactive lab guide |
-| `manifests/*.yaml` | all | Ready-to-use Kubernetes YAML manifests for all labs |
-| `common.sh` | — | Shared helpers. Sourced, never executed. |
-| `00-check-prereqs.sh` | participant | Tooling, cluster reachability, RBAC, Traefik, data path |
-| `10-provision-cluster.sh` | **instructor, on the node, as root** | Builds the RKE2 cluster, emits a remote kubeconfig |
-| `20-enable-gateway-api.sh` | instructor | Enables Traefik's Gateway provider (reset/recovery path for Lab 3) |
-| `30-install-podinfo.sh` | either | Deploys the workload; `--emit-only` writes the YAML participants own |
-| `40-validate-lab.sh` | instructor | Per-lab outcome checks; `--answers` harvests the ⚠ VERIFY values |
-| `90-teardown.sh` | either | Removes lab resources; `--all` is guarded and destructive |
+| `README.md` | all | Workshop overview, quickstart, and manifest reference table |
+| `01-slides-gateway-api-rke2.md` | all | Unified master Marp deck + interactive on-screen lab guide |
+| `manifests/*.yaml` | all | Ready-to-use Kubernetes YAML manifests for all labs (22 files) |
+| `common.sh` | — | Shared helpers and port-forwarding routine. Sourced, never executed. |
+| `00-check-prereqs.sh` | participant | Tooling verification, auto-installation, and shell completion |
 | `AGENT.md` | agent | This file |
-
-`03-prepare-lab-vm.sh` was split into the numbered scripts above. Do not reintroduce a monolith.
 
 ---
 
@@ -238,34 +232,22 @@ Do not "correct" these from training-data priors — they were checked against p
 ## Validation — run after every change
 
 ```bash
-# 1. Deck renders (49 slides expected, notes in bespoke-marp-note containers)
+# 1. Deck renders without errors
 marp --no-stdin 01-slides-gateway-api-rke2.md -o /tmp/deck.html
 
-# 2. Every script parses
-for f in scripts/*.sh scripts/lib/*.sh; do bash -n "$f" || echo "SYNTAX FAIL $f"; done
+# 2. Shell scripts parse cleanly
+for f in 00-check-prereqs.sh common.sh; do bash -n "$f" || echo "SYNTAX FAIL $f"; done
 
-# 3. Generated manifests are valid without touching a cluster
-scripts/30-install-podinfo.sh --emit-only /tmp/labyaml
-python3 -c "
-import yaml, glob
-for f in sorted(glob.glob('/tmp/labyaml/*.yaml')):
-    print(f, '->', [d['kind'] for d in yaml.safe_load_all(open(f)) if d])"
-
-# 4. Scripts fail cleanly with no cluster (expect a single [FAIL] line, no traceback)
-for s in 00-check-prereqs 20-enable-gateway-api 40-validate-lab 90-teardown; do
-  KUBECONFIG=/nonexistent scripts/$s.sh 2>&1 | tail -2
-done
-
-# 5. All manifests in manifests/ parse + all kubectl patches in slides are valid JSON
+# 3. All kubectl JSON patches in slides are valid
 python3 - <<'PY'
-import re, json, glob
+import re, json
 t = open('01-slides-gateway-api-rke2.md').read()
 bad = 0
 for p in re.findall(r"-p\s+'(\[.*?\])'", t, re.S) + \
          re.findall(r"--type=merge\s+\\?\s*\n?\s*-p\s+'(\{.*?\})'", t, re.S):
     try: json.loads(p)
     except Exception as e: print(f"PATCH FAIL: {e}"); bad += 1
-print("OK" if not bad else f"{bad} failures")
+print("JSON patches: OK" if not bad else f"{bad} failures")
 PY
 ```
 
