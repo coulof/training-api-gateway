@@ -618,27 +618,44 @@ Every Route reports, **per parent Gateway**:
 
 <!-- _class: lab -->
 
-# Lab 4.3 — Typed URL Rewrite Filter
+# Lab 4.3a — Isolated URL Rewrite Filter
 
-**Goal:** Implement path prefix rewriting without vendor annotations or CRDs.
+**Goal:** Route `/shop` with `URLRewrite` while ensuring `/` is NOT exposed.
 
-1. **Apply HTTPRoute with standard `URLRewrite` filter:**
+1. **Apply HTTPRoute with `/shop` rule ONLY:**
    ```bash
-   kubectl apply -f manifests/11-httproute-rewrite.yaml
+   kubectl apply -f manifests/11-httproute-rewrite-1.yaml
    ```
-2. **Inspect the typed filter in `HTTPRoute`:**
-   ```yaml
-   filters:
-     - type: URLRewrite
-       urlRewrite:
-         path:
-           type: ReplacePrefixMatch
-           replacePrefixMatch: /
-   ```
-3. **Verify traffic rewrite:**
+2. **Verify isolated scoping:**
    ```bash
-   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message   # VERSION ONE
+   # /shop is rewritten to / on the pod -> Returns VERSION ONE (200 OK):
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message
+
+   # / is NOT matched by any rule -> Traefik returns 404:
+   curl -s -o /dev/null -w "%{http_code}\n" -H 'Host: podinfo.lab' "$GW_URL/"   # 404
    ```
+
+*Lesson:* Unlike Ingress annotations (which bleed globally across an object), Gateway API rules and filters are strictly isolated.
+
+---
+
+<!-- _class: lab -->
+
+# Lab 4.3b — Multi-Rule Coexistence
+
+**Goal:** Cleanly combine rewritten paths (`/shop`) and plain paths (`/`) in one object.
+
+1. **Apply HTTPRoute with BOTH rules:**
+   ```bash
+   kubectl apply -f manifests/11-httproute-rewrite-2.yaml
+   ```
+2. **Verify both paths answer independently:**
+   ```bash
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message   # VERSION ONE (rewritten)
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/"     | jq -r .message   # VERSION ONE (plain)
+   ```
+3. **Spec-mandated precedence:**
+   Longest prefix match (`/shop`) is evaluated first; `/` acts as the root fallback.
 
 ---
 
