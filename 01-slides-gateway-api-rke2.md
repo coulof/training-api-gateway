@@ -965,6 +965,70 @@ spec:
 
 ---
 
+# Gateway API Tooling Ecosystem
+
+The Kubernetes SIG-Network subproject maintains dedicated tools to manage, migrate, and visualize Gateway API:
+
+- **`gwctl` ([kubernetes-sigs/gwctl](https://github.com/kubernetes-sigs/gwctl)):**
+  Official CLI tool to inspect, describe, and visualize Gateway graphs, listeners, and policy bindings
+- **`ingress2gateway` ([kubernetes-sigs/ingress2gateway](https://github.com/kubernetes-sigs/ingress2gateway)):**
+  Automated migration CLI converting legacy Ingress manifests + provider annotations to Gateway API
+- **`Headlamp` ([kubernetes-sigs/headlamp](https://github.com/kubernetes-sigs/headlamp)):**
+  Kubernetes web dashboard with native, real-time Gateway API topological map views
+- **`policy-machinery` ([Kuadrant/policy-machinery](https://github.com/Kuadrant/policy-machinery)):**
+  Framework for validating and implementing hierarchical Policy Attachments (Defaults & Overrides)
+
+---
+
+# Deep-Dive: gwctl vs. kubectl
+
+`kubectl` requires multiple `get` and `describe` commands across namespaces to trace routing paths.
+
+`gwctl` builds the **complete relationship tree** in one command:
+
+```text
+$ gwctl describe gateway web -n infra
+Gateway: infra/web
+├── Listener: web (HTTP :80) [Accepted: True]
+│   ├── Route: demo/podinfo [Accepted: True, ResolvedRefs: True]
+│   │   ├── Backend: demo/podinfo-v1:9898 (Weight: 90)
+│   │   └── Backend: demo/podinfo-v2:9898 (Weight: 10)
+│   └── Route: team-a/app [Accepted: True, ResolvedRefs: True]
+└── Listener: websecure (HTTPS :443) [Accepted: True]
+```
+
+- Instant diagnosis of `NotAllowedByListeners` and `RefNotPermitted` errors
+- Shows effective attached policies (timeouts, retries, auth) at every level
+
+---
+
+<!-- _class: lab -->
+
+# Lab: Gateway API Tooling in Action
+
+**Goal:** Use `ingress2gateway` for automated migration and `gwctl` to inspect cluster topology.
+
+1. **Automated Migration with `ingress2gateway`:**
+   ```bash
+   ingress2gateway print --providers ingress-nginx --input-file manifests/02-ingress.yaml
+   ```
+   *Watch it translate our Lab 1 Ingress into standard Gateway and HTTPRoute YAML!*
+
+2. **Inspect Cluster Graph with `gwctl`:**
+   ```bash
+   gwctl get gateways -A
+   gwctl get httproutes -A
+   gwctl describe gateway web -n infra
+   ```
+
+3. **Explore Multi-Tenant Relationships:**
+   ```bash
+   gwctl describe httproute podinfo -n demo
+   gwctl describe httproute app -n team-a
+   ```
+
+---
+
 # The honest downsides of Gateway API
 
 - **More objects to manage:** 3 YAML files instead of 1 for a simple exposure

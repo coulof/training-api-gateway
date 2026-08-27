@@ -131,7 +131,39 @@ if [[ "$INSTALL_PREREQS" = true ]]; then
     fi
   fi
 
-  # 4. Kubeconfig setup (if running directly on the RKE2 host)
+  # 4. ingress2gateway CLI
+  if ! command -v ingress2gateway >/dev/null 2>&1; then
+    log "Installing ingress2gateway..."
+    I2G_VERSION="${I2G_VERSION:-1.2.0}"
+    I2G_ARCH="x86_64"
+    [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]] && I2G_ARCH="arm64"
+    I2G_OS="Linux"
+    [[ "$(uname -s)" == "Darwin" ]] && I2G_OS="Darwin"
+    I2G_URL="https://github.com/kubernetes-sigs/ingress2gateway/releases/download/v${I2G_VERSION}/ingress2gateway_${I2G_OS}_${I2G_ARCH}.tar.gz"
+    if curl -sSL -f "$I2G_URL" | $SUDO tar -xz -C /usr/local/bin ingress2gateway 2>/dev/null; then
+      $SUDO chmod 755 /usr/local/bin/ingress2gateway
+    else
+      warn "Could not download ingress2gateway"
+    fi
+  fi
+
+  # 5. gwctl CLI
+  if ! command -v gwctl >/dev/null 2>&1; then
+    log "Installing gwctl..."
+    GWCTL_VERSION="${GWCTL_VERSION:-0.2.0}"
+    GWCTL_ARCH="x86_64"
+    [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" ]] && GWCTL_ARCH="arm64"
+    GWCTL_OS="Linux"
+    [[ "$(uname -s)" == "Darwin" ]] && GWCTL_OS="Darwin"
+    GWCTL_URL="https://github.com/kubernetes-sigs/gwctl/releases/download/v${GWCTL_VERSION}/gwctl_${GWCTL_OS}_${GWCTL_ARCH}.tar.gz"
+    if curl -sSL -f "$GWCTL_URL" | $SUDO tar -xz -C /usr/local/bin gwctl 2>/dev/null; then
+      $SUDO chmod 755 /usr/local/bin/gwctl
+    else
+      warn "Could not download gwctl"
+    fi
+  fi
+
+  # 6. Kubeconfig setup (if running directly on the RKE2 host)
   if [[ ! -f "$HOME/.kube/config" ]]; then
     if [[ -f /etc/rancher/rke2/rke2.yaml ]] || $SUDO test -f /etc/rancher/rke2/rke2.yaml 2>/dev/null; then
       log "Copying /etc/rancher/rke2/rke2.yaml to ~/.kube/config..."
@@ -152,6 +184,8 @@ check "git (labs track YAML in git)" "command -v git"
 soft_check "helm (Lab 1.2 reads podinfo's chart)" "command -v helm"
 soft_check "openssl (Appendix A, TLS)"            "command -v openssl"
 soft_check "grpcurl (Lab 6; pod fallback exists)" "command -v grpcurl"
+soft_check "ingress2gateway (Migration tool)"     "command -v ingress2gateway"
+soft_check "gwctl (Gateway API CLI)"             "command -v gwctl"
 
 title "Cluster access"
 
