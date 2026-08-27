@@ -618,23 +618,51 @@ Every Route reports, **per parent Gateway**:
 
 <!-- _class: lab -->
 
-# Lab 4.3 & 4.4 — Typed Rewrite & Scoped RBAC
+# Lab 4.3 — Typed URL Rewrite Filter
 
-1. **URL Rewrite using standard Gateway API filter (no CRD needed!):**
+**Goal:** Implement path prefix rewriting without vendor annotations or CRDs.
+
+1. **Apply HTTPRoute with standard `URLRewrite` filter:**
    ```bash
    kubectl apply -f manifests/11-httproute-rewrite.yaml
-   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message # VERSION ONE
    ```
-2. **Apply scoped developer RBAC:**
+2. **Inspect the typed filter in `HTTPRoute`:**
+   ```yaml
+   filters:
+     - type: URLRewrite
+       urlRewrite:
+         path:
+           type: ReplacePrefixMatch
+           replacePrefixMatch: /
+   ```
+3. **Verify traffic rewrite:**
+   ```bash
+   curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message   # VERSION ONE
+   ```
+
+---
+
+<!-- _class: lab -->
+
+# Lab 4.4 — RBAC Delegation & Security Proof
+
+**Goal:** Prove that the developer can manage routes but is strictly blocked from modifying Gateway infrastructure.
+
+1. **Apply scoped developer RBAC (`Role: route-editor`):**
    ```bash
    kubectl apply -f manifests/12-rbac-gateway.yaml
+   DEV="--as=system:serviceaccount:demo:dev"
    ```
-3. **Verify security isolation:**
+2. **Action 1 (Intended): Developer updates their HTTPRoute in `demo`:**
    ```bash
-   # Developer CAN manage routes:
-   kubectl auth can-i update httproutes -n demo --as=system:serviceaccount:demo:dev # yes
-   # Developer CANNOT tamper with Gateway or TLS:
-   kubectl auth can-i update gateways -n infra --as=system:serviceaccount:demo:dev  # no
+   kubectl $DEV -n demo patch httproute podinfo --type=merge \
+     -p '{"metadata":{"annotations":{"updated-by":"dev"}}}'   # Succeeded!
+   ```
+3. **Action 2 (Forbidden): Developer attempts to patch Gateway in `infra`:**
+   ```bash
+   kubectl $DEV -n infra patch gateway web --type=json \
+     -p '[{"op":"replace","path":"/spec/listeners/0/port","value":9000}]'
+   # Error from server (Forbidden): User cannot patch resource "gateways" in namespace "infra"
    ```
 4. **Commit Lab 4:**
    ```bash
