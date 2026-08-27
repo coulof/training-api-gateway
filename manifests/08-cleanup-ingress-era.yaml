@@ -1,0 +1,26 @@
+# 08-cleanup-ingress-era.yaml
+# Use with: kubectl delete -f manifests/08-cleanup-ingress-era.yaml --ignore-not-found
+# Cleans up all legacy Ingress-era resources before starting the Gateway API era (Lab 4)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: podinfo
+  namespace: demo
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: podinfo-canary
+  namespace: demo
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: podinfo-canary
+  namespace: demo
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-shop
+  namespace: demo

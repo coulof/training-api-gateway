@@ -593,9 +593,9 @@ Every Route reports, **per parent Gateway**:
 
 **Goal:** Establish the role-separated Gateway and HTTPRoute baseline.
 
-1. **Clean legacy Ingress & deploy Gateway in `infra`:**
+1. **Clean legacy Ingress-era objects & deploy Gateway in `infra`:**
    ```bash
-   kubectl -n demo delete ingress --all --ignore-not-found
+   kubectl delete -f manifests/08-cleanup-ingress-era.yaml --ignore-not-found
    kubectl apply -f manifests/10-gateway.yaml   # port 8000 binds Traefik web entrypoint
    ```
 2. **Developer creates HTTPRoute in `demo` & observes rejection:**
@@ -603,7 +603,7 @@ Every Route reports, **per parent Gateway**:
    kubectl apply -f manifests/11-httproute.yaml
    kubectl -n demo describe httproute podinfo  # Reason: NotAllowedByListeners (from: Same)
    ```
-3. **Operator opens listener across namespaces:**
+3. **Operator opens listener across namespaces (`from: All`):**
    ```bash
    kubectl -n infra patch gateway web --type=json \
      -p '[{"op":"replace","path":"/spec/listeners/0/allowedRoutes/namespaces/from","value":"All"}]'
