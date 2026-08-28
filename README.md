@@ -22,6 +22,8 @@ This training guides participants through a hands-on evolution of application ro
 ├── AGENT.md                        # AI agent & developer guidelines
 ├── README.md                       # This file
 ├── common.sh                       # Shared shell helpers & port-forwarding
+├── measure-traffic.sh              # Traffic distribution measurement helper
+├── ROADMAP-CILIUM-SERVICE-MESH.md  # Technical roadmap & design for Cilium/GAMMA extension
 ├── deck.html / deck.pdf / deck.pptx# Exported presentation artifacts
 └── manifests/                      # 22 core manifests + 7 troubleshooting manifests
     ├── 01-podinfo-v1.yaml            # Lab 1: podinfo v1 Deployment & Service
@@ -107,6 +109,14 @@ curl -s -o /dev/null -w "%{http_code}\n" "$GW_URL/"   # Expect 404 (Traefik is a
 | **Lab 7** | **Multi-Tenancy & Safe Delegation:** Shared Gateway across tenant namespaces (`team-a`, `team-b`), cross-namespace backend reference rejection (`RefNotPermitted`), authorize with `ReferenceGrant` | `manifests/29-tenants.yaml`<br>`manifests/30-gateway-shared.yaml`<br>`manifests/30-httproute-team-a.yaml`<br>`manifests/31-referencegrant.yaml` |
 | **Tooling** | **Gateway API Tools:** Automated migration with `ingress2gateway`, topology inspection with `gwctl` | — |
 | **App. A** | **TLS Termination:** HTTPS listener on port `8443` with Secret `certificateRefs` | `manifests/40-gateway-tls.yaml` |
+
+---
+
+## 🔮 Roadmap & Future Extensions
+
+- [x] **Core Gateway API Workshop (North-South with Traefik):** Labs 1–7 covering Ingress migration, URL rewriting, traffic splitting, gRPC, and multi-tenant `ReferenceGrant`.
+- [ ] **Cilium Service Mesh on RKE2 (East-West with GAMMA):** Sidecarless eBPF service mesh module covering inter-service routing with `HTTPRoute` (`parentRefs: kind: Service`), fault injection with `podinfo --random-error`, latency timeouts, and Hubble L7 observability.
+  * 📋 *See detailed technical specification:* [`ROADMAP-CILIUM-SERVICE-MESH.md`](ROADMAP-CILIUM-SERVICE-MESH.md)
 
 ---
 

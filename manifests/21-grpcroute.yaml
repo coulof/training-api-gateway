@@ -15,6 +15,10 @@ spec:
         - method:
             service: grpc.health.v1.Health
             method: Check
+        - method:
+            service: grpc.reflection.v1.ServerReflection
+        - method:
+            service: grpc.reflection.v1alpha.ServerReflection
       backendRefs:
         - name: podinfo-grpc
           port: 9999

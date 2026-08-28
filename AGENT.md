@@ -51,7 +51,9 @@ Ask before assuming. Do not silently convert one model to the other.
 | `01-slides-gateway-api-rke2.md` | all | Unified master Marp deck + interactive on-screen lab guide |
 | `manifests/*.yaml` | all | Ready-to-use Kubernetes YAML manifests for all labs (22 files) |
 | `common.sh` | — | Shared helpers and port-forwarding routine. Sourced, never executed. |
+| `measure-traffic.sh` | participant | Traffic distribution measurement helper (defaults to 127.0.0.1) |
 | `00-check-prereqs.sh` | participant | Tooling verification, auto-installation, and shell completion |
+| `ROADMAP-CILIUM-SERVICE-MESH.md` | instructor | Blueprint for future Cilium / GAMMA East-West extension session |
 | `AGENT.md` | agent | This file |
 
 ---

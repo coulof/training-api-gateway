@@ -18,16 +18,18 @@ spec:
       containers:
         - name: podinfo
           image: ghcr.io/stefanprodan/podinfo:6.7.0
+          command:
+            - ./podinfo
+          args:
+            - --port=9898
+            - --grpc-port=9999
+            - --grpc-service-name=podinfo
           ports:
             - name: http
               containerPort: 9898
             - name: grpc
               containerPort: 9999
           env:
-            - name: PODINFO_GRPC_PORT
-              value: "9999"
-            - name: PODINFO_GRPC_SERVICE_NAME
-              value: "podinfo"
             - name: PODINFO_UI_MESSAGE
               value: "GRPC BACKEND"
           readinessProbe:

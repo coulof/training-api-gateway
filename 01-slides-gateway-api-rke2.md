@@ -815,9 +815,8 @@ rules:
    ```
 2. **Measure traffic distribution (50 requests):**
    ```bash
-   for i in $(seq 1 50); do
-     curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message
-   done | sort | uniq -c
+   ./measure-traffic.sh -n 50 -p /shop -H podinfo.lab
+   # Or: for i in $(seq 1 50); do curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message; done | sort | uniq -c
    # Returns ~45 VERSION ONE (90%) and ~5 VERSION TWO (10%)
    ```
 3. **Add deterministic targeting via HTTP headers (`X-Canary: always`):**
@@ -843,16 +842,60 @@ One API, one Gateway, one RBAC model — for everything entering the cluster.
 
 ---
 
+# Why gRPC at the Ingress & Gateway Edge?
+
+- **Binary & High-Performance:** gRPC runs over **HTTP/2**, using binary protobuf framing, multiplexed streams, and bi-directional streaming.
+- **The Ingress Era Limitation:**
+  - Ingress (`networking.k8s.io/v1`) only understands HTTP/1.1 paths (`/api/foo`).
+  - Routing gRPC required vendor annotations (`backend-protocol: "GRPC"`) or blind L4 TCP streaming — with **zero visibility into RPC service names or methods**.
+- **The Gateway API Solution:**
+  - Native **`GRPCRoute` (GA in v1.1)** exposes first-class RPC routing:
+    `service: grpc.health.v1.Health` and `method: Check`
+  - Direct cleartext HTTP/2 upstream negotiation via `appProtocol: kubernetes.io/h2c`.
+
+---
+
+# Architecture: HTTP vs. gRPC Data Path
+
+<style scoped> pre { font-size: 0.70em; line-height: 1.25; } </style>
+
+```text
+                     ┌──────────────────────────────────────────────┐
+                     │          Traefik Gateway (infra/web)         │
+                     │            HTTP Entrypoint (:8000)           │
+                     └──────────────┬───────────────────────────────┘
+                                    │
+          ┌─────────────────────────┴─────────────────────────┐
+          │ Host: podinfo.lab                                 │ Host: grpc.podinfo.lab
+          │ Protocol: HTTP/1.1 REST                           │ Protocol: HTTP/2 (h2c)
+          ▼                                                   ▼
+ ┌───────────────────┐                               ┌───────────────────┐
+ │     HTTPRoute     │                               │     GRPCRoute     │
+ │  Path: / or /shop │                               │Method:Health/Check│
+ └────────┬──────────┘                               └────────┬──────────┘
+          │                                                   │
+  ┌───────┴────────┐                                          ▼
+  ▼                ▼                                 ┌───────────────────┐
+┌──────────────┐ ┌──────────────┐                    │   podinfo-grpc    │
+│  podinfo-v1  │ │  podinfo-v2  │                    │    Port: 9999     │
+│  Port: 9898  │ │  Port: 9898  │                    │  gRPC / Protobuf  │
+└──────────────┘ └──────────────┘                    └───────────────────┘
+```
+
+---
+
 <!-- _class: lab -->
 
 # Lab 6.1 & 6.2 — Deploy gRPC & GRPCRoute
+
+**Goal:** Deploy a gRPC microservice (`port: 9999`, `h2c`), attach a `GRPCRoute` with method-level matching to the shared Gateway, and verify binding status.
 
 1. **Deploy podinfo with gRPC enabled (`port: 9999` & `appProtocol: h2c`):**
    ```bash
    kubectl apply -f manifests/20-podinfo-grpc.yaml
    kubectl -n demo rollout status deploy/podinfo-grpc
    ```
-2. **Deploy GRPCRoute with method matching:**
+2. **Deploy GRPCRoute with method matching and server reflection:**
    ```bash
    kubectl apply -f manifests/21-grpcroute.yaml
    ```
@@ -876,15 +919,14 @@ One API, one Gateway, one RBAC model — for everything entering the cluster.
      "${GW_URL#http://}" grpc.health.v1.Health/Check
    ```
    *Expected response:* `{"status": "SERVING"}`
-2. **Break method matching (simulate typo):**
+2. **Verify L7 method isolation (unrouted method returns 404 / Unimplemented):**
    ```bash
-   kubectl -n demo patch grpcroute podinfo-grpc --type=json \
-     -p '[{"op":"replace","path":"/spec/rules/0/matches/0/method/method","value":"Watch"}]'
-   # Re-run Check -> Returns (Unimplemented / Routing error)
+   grpcurl -plaintext -authority grpc.podinfo.lab \
+     "${GW_URL#http://}" grpc.health.v1.Health/Watch
+   # Returns Code: Unimplemented / 404 (Not Found)
    ```
-3. **Restore and commit:**
+3. **Save and commit lab progress:**
    ```bash
-   kubectl apply -f manifests/21-grpcroute.yaml
    cp manifests/20-podinfo-grpc.yaml manifests/21-grpcroute.yaml ~/lab/
    cd ~/lab && git add -A && git commit -m "Lab 6: multi-protocol routing with GRPCRoute"
    ```
@@ -1076,18 +1118,16 @@ spec:
 
 ---
 
-# Gateway API Tooling Ecosystem
+# Gateway API Tooling & Resources
 
-The Kubernetes SIG-Network subproject maintains dedicated tools to manage, migrate, and visualize Gateway API:
+The Kubernetes SIG-Network subproject maintains dedicated tools and guides to manage and migrate Gateway API:
 
 - **`gwctl` ([kubernetes-sigs/gwctl](https://github.com/kubernetes-sigs/gwctl)):**
-  Official CLI tool to inspect, describe, and visualize Gateway graphs, listeners, and policy bindings
+  Official CLI tool to inspect, describe, and visualize Gateway graphs, listeners, and route bindings
 - **`ingress2gateway` ([kubernetes-sigs/ingress2gateway](https://github.com/kubernetes-sigs/ingress2gateway)):**
   Automated migration CLI converting legacy Ingress manifests + provider annotations to Gateway API
-- **`Headlamp` ([kubernetes-sigs/headlamp](https://github.com/kubernetes-sigs/headlamp)):**
-  Kubernetes web dashboard with native, real-time Gateway API topological map views
-- **`policy-machinery` ([Kuadrant/policy-machinery](https://github.com/Kuadrant/policy-machinery)):**
-  Framework for validating and implementing hierarchical Policy Attachments (Defaults & Overrides)
+- **Official HTTP Routing User Guides ([gateway-api.sigs.k8s.io/.../http-routing/](https://gateway-api.sigs.k8s.io/guides/user-guides/http-routing/)):**
+  Upstream user guides covering path matching, header routing, redirects, rewrites, and traffic splitting
 
 ---
 
