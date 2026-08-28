@@ -24,10 +24,3 @@ spec:
       backendRefs:
         - name: podinfo-v1
           port: 9898
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: podinfo-v1
-          port: 9898

@@ -740,7 +740,7 @@ Typed. Validated at admission. Discoverable with `kubectl explain`.
 
 ---
 
-# Expressiveness — traffic splitting
+# Expressiveness — traffic splitting (North-South)
 
 ```yaml
 rules:
@@ -753,9 +753,13 @@ rules:
         weight: 10
 ```
 
-- Canary and blue-green **without a service mesh**
-- Weights are a first-class field — Argo Rollouts and Flux drive them natively
-- Compare: Ingress required a *second, duplicate* object with vendor annotations
+- **First-class `weight` field:** Standardized in the core spec across all data planes
+- **Native GitOps rollouts:** Argo Rollouts and Flux Flagger drive `weight` shifts directly
+- **Compare with Ingress (Lab 2):**
+  - Ingress required duplicate objects or vendor CRDs (`IngressRoute`)
+  - Gateway API consolidates canary weights into **4 clean lines in one `HTTPRoute`**
+
+<span class="small">Note: This manages North-South (edge) traffic. For East-West (mesh) traffic, the GAMMA initiative uses this exact same HTTPRoute syntax.</span>
 
 ---
 
@@ -763,15 +767,18 @@ rules:
 
 # Lab 5.1 & 5.2 — Weighted Canary & Header Routing
 
+**Goal:** Configure a native 90/10 canary split and header-based overrides in a single HTTPRoute.
+
 1. **Apply 90/10 Canary split in a single HTTPRoute:**
    ```bash
    kubectl apply -f manifests/11-httproute-traffic-split.yaml
    ```
-2. **Measure traffic distribution:**
+2. **Measure traffic distribution (50 requests):**
    ```bash
    for i in $(seq 1 50); do
      curl -s -H 'Host: podinfo.lab' "$GW_URL/shop" | jq -r .message
    done | sort | uniq -c
+   # Returns ~45 VERSION ONE (90%) and ~5 VERSION TWO (10%)
    ```
 3. **Add deterministic targeting via HTTP headers (`X-Canary: always`):**
    ```bash
