@@ -563,27 +563,45 @@ kubectl create role route-editor -n team-a \
 
 ---
 
-# Status conditions — you can finally debug
+# Status conditions: The Route perspective (Developer)
 
 ```bash
-$ kubectl describe httproute podinfo
+$ kubectl -n demo describe httproute podinfo
 Status:
   Parents:
     Conditions:
-      Type:     Accepted
-      Status:   True
-      Reason:   Accepted
-      Type:     ResolvedRefs
-      Status:   False
-      Reason:   BackendNotFound
+      Type:     Accepted       Status: True    Reason: Accepted
+      Type:     ResolvedRefs   Status: False   Reason: BackendNotFound
       Message:  Service "shop-api" not found
 ```
 
-Every Route reports, **per parent Gateway**:
-- `Accepted` — did the Gateway take this route?
-- `ResolvedRefs` — do all backends and grants resolve?
+| Common Condition & Reason | What happened | How to resolve |
+|---|---|---|
+| `Accepted: False` / `NotAllowedByListeners` | Gateway blocked route's namespace | Update listener `allowedRoutes` |
+| `Accepted: False` / `NoMatchingListenerHostname` | Route hostname mismatch | Align hostname with Gateway |
+| `ResolvedRefs: False` / `BackendNotFound` | Target Service does not exist | Create Service or fix port |
+| `ResolvedRefs: False` / `RefNotPermitted` | Missing cross-namespace grant | Apply `ReferenceGrant` |
 
-**With Ingress you read controller logs and guessed.**
+---
+
+# Status conditions: The Gateway perspective (Operator)
+
+```bash
+$ kubectl -n infra describe gateway web
+Status:
+  Conditions:
+    Type: Accepted    Status: False   Reason: ListenersNotValid
+  Listeners:
+    Name: web         Status: False   Reason: PortUnavailable
+    Message: Cannot find entryPoint for Gateway: no matching entryPoint for port 80
+```
+
+| Common Condition & Reason | What happened | How to resolve |
+|---|---|---|
+| `Accepted: False` / `PortUnavailable` | Port has no matching proxy socket | Match Traefik entrypoint (8000/8443) |
+| `ResolvedRefs: False` / `InvalidCertificateRef`| TLS Secret missing or corrupt | Create `kubernetes.io/tls` Secret |
+| `Conflicted: True` / `ProtocolConflict` | Duplicate port or protocol clash | Reconfigure listener ports |
+| `Programmed: True` / `Programmed` | Data plane active and routing | Listener operational |
 
 ---
 
@@ -1161,16 +1179,22 @@ TLS secret is owned in `infra` namespace; `HTTPRoute` authors cannot modify cert
 
 ---
 
-# Appendix B — Gateway API Condition Dictionary
+# Appendix B — Condition Dictionary & Troubleshooting
 
-| Condition | Reason | What it means |
+| Condition & Reason | Target | What it means |
 |---|---|---|
-| `Accepted: True` | `Accepted` | Parent Gateway validated and accepted this route |
-| `Accepted: False` | `NotAllowedByListeners` | Gateway listener rejected route namespace or hostname |
-| `ResolvedRefs: True` | `ResolvedRefs` | All backend Services and ReferenceGrants exist |
-| `ResolvedRefs: False` | `BackendNotFound` | Referenced backend Service does not exist |
-| `ResolvedRefs: False` | `RefNotPermitted` | Cross-namespace reference without a `ReferenceGrant` |
-| `Programmed: True` | `Programmed` | Data plane has successfully synchronized configuration |
+| `Accepted: False` (`PortUnavailable`) | Gateway | Listener port has no matching proxy socket |
+| `ResolvedRefs: False` (`InvalidCertificateRef`) | Gateway | Referenced TLS Secret is missing or corrupt |
+| `Accepted: False` (`NotAllowedByListeners`) | HTTPRoute | Gateway listener rejected route's namespace |
+| `Accepted: False` (`NoMatchingListenerHostname`)| HTTPRoute | Hostname does not match listener domain pattern |
+| `ResolvedRefs: False` (`BackendNotFound`) | HTTPRoute | Target Service does not exist |
+| `ResolvedRefs: False` (`RefNotPermitted`) | HTTPRoute | Cross-namespace reference without `ReferenceGrant` |
+
+Practice diagnosing intentional error scenarios in `manifests/troubleshooting/`:
+```bash
+kubectl apply -f manifests/troubleshooting/err-gateway-port-unavailable.yaml
+kubectl describe gateway err-port-unavailable -n infra
+```
 
 ---
 

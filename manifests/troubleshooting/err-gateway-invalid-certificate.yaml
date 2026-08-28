@@ -1,0 +1,24 @@
+# Troubleshooting: InvalidCertificateRef Error
+# Trigger: HTTPS listener references a non-existent TLS secret "missing-tls-secret".
+# Expected Condition on Gateway:
+#   Type: ResolvedRefs, Status: False, Reason: InvalidCertificateRef
+#   Message: Secret "missing-tls-secret" not found in namespace "infra"
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: err-invalid-cert
+  namespace: infra
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: websecure
+      port: 8443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: missing-tls-secret
+            namespace: infra
+      allowedRoutes:
+        namespaces:
+          from: All

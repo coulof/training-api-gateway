@@ -1,0 +1,25 @@
+# Troubleshooting: RefNotPermitted Error
+# Trigger: Route in namespace "team-a" attempts to route traffic to Service "app" in namespace "team-b" without a ReferenceGrant.
+# Expected Condition on HTTPRoute:
+#   Type: ResolvedRefs, Status: False, Reason: RefNotPermitted
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: err-ref-not-permitted
+  namespace: team-a
+spec:
+  parentRefs:
+    - name: web
+      namespace: infra
+      sectionName: web
+  hostnames:
+    - "a.podinfo.lab"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /cross-tenant
+      backendRefs:
+        - name: app
+          namespace: team-b
+          port: 9898

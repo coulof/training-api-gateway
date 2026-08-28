@@ -1,0 +1,19 @@
+# Troubleshooting: PortUnavailable Error
+# Trigger: Listener specifies port 9090 which has no matching Traefik entrypoint.
+# Expected Condition on Gateway:
+#   Type: Accepted, Status: False, Reason: PortUnavailable / ListenersNotValid
+#   Message: Cannot find entryPoint for Gateway: no matching entryPoint for port 9090 and protocol "HTTP"
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: err-port-unavailable
+  namespace: infra
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: custom-port
+      port: 9090
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All

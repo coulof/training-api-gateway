@@ -1,0 +1,24 @@
+# Troubleshooting: Conflicted / Duplicate Listener Error
+# Trigger: Multiple listeners defined with the exact same name or conflicting protocols on the same port.
+# Expected Condition on Gateway:
+#   Type: Accepted, Status: False, Reason: ListenersNotValid / Conflicted: True
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: err-listener-conflict
+  namespace: infra
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: web
+      port: 8000
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: web
+      port: 8000
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All

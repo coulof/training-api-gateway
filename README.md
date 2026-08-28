@@ -23,7 +23,7 @@ This training guides participants through a hands-on evolution of application ro
 ├── README.md                       # This file
 ├── common.sh                       # Shared shell helpers & port-forwarding
 ├── deck.html / deck.pdf / deck.pptx# Exported presentation artifacts
-└── manifests/                      # 22 ready-to-use Kubernetes YAML manifests
+└── manifests/                      # 22 core manifests + 7 troubleshooting manifests
     ├── 01-podinfo-v1.yaml            # Lab 1: podinfo v1 Deployment & Service
     ├── 02-ingress.yaml               # Lab 1: Baseline Ingress
     ├── 03-middleware-strip.yaml      # Lab 2.1: Traefik StripPrefix Middleware
@@ -46,7 +46,15 @@ This training guides participants through a hands-on evolution of application ro
     ├── 30-gateway-shared.yaml        # Lab 7.2: Shared Gateway with allowedRoutes
     ├── 30-httproute-team-a.yaml      # Lab 7.3: Tenant HTTPRoute
     ├── 31-referencegrant.yaml        # Lab 7.6: Cross-namespace ReferenceGrant
-    └── 40-gateway-tls.yaml           # App. A: HTTPS Gateway with TLS termination
+    ├── 40-gateway-tls.yaml           # App. A: HTTPS Gateway with TLS termination
+    └── troubleshooting/              # Intentional error triggers for diagnostics
+        ├── err-gateway-port-unavailable.yaml
+        ├── err-gateway-invalid-certificate.yaml
+        ├── err-gateway-listener-conflict.yaml
+        ├── err-httproute-not-allowed-by-listeners.yaml
+        ├── err-httproute-hostname-mismatch.yaml
+        ├── err-httproute-backend-not-found.yaml
+        └── err-httproute-ref-not-permitted.yaml
 ```
 
 ---
