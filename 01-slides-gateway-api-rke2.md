@@ -1179,7 +1179,7 @@ TLS secret is owned in `infra` namespace; `HTTPRoute` authors cannot modify cert
 
 ---
 
-# Appendix B — Condition Dictionary & Troubleshooting
+# Appendix B1 — Gateway API Condition Dictionary
 
 | Condition & Reason | Target | What it means |
 |---|---|---|
@@ -1190,11 +1190,52 @@ TLS secret is owned in `infra` namespace; `HTTPRoute` authors cannot modify cert
 | `ResolvedRefs: False` (`BackendNotFound`) | HTTPRoute | Target Service does not exist |
 | `ResolvedRefs: False` (`RefNotPermitted`) | HTTPRoute | Cross-namespace reference without `ReferenceGrant` |
 
-Practice diagnosing intentional error scenarios in `manifests/troubleshooting/`:
+---
+
+# Appendix B2 — Gateway Troubleshooting (Operator)
+
+Trigger and diagnose operator status conditions on the existing `infra/web` Gateway:
+
 ```bash
-kubectl apply -f manifests/troubleshooting/err-gateway-port-unavailable.yaml
-kubectl describe gateway err-port-unavailable -n infra
+# 1. Trigger PortUnavailable (Port 9090 has no matching Traefik entrypoint):
+kubectl -n infra patch gateway web --type=json \
+  -p '[{"op":"replace","path":"/spec/listeners/0/port","value":9090}]'
+kubectl describe gateway web -n infra      # Accepted: False, Reason: PortUnavailable
+
+# 2. Restore port 8000:
+kubectl -n infra patch gateway web --type=json \
+  -p '[{"op":"replace","path":"/spec/listeners/0/port","value":8000}]'
+
+# 3. Trigger InvalidCertificateRef (Missing TLS Secret):
+kubectl -n infra patch gateway web --type=merge \
+  -p '{"spec":{"listeners":[{"name":"websecure","port":8443,"protocol":"HTTPS","tls":{"certificateRefs":[{"name":"missing-cert","namespace":"infra"}]},"allowedRoutes":{"namespaces":{"from":"All"}}}]}}'
+kubectl describe gateway web -n infra      # ResolvedRefs: False, Reason: InvalidCertificateRef
+# Restore: kubectl apply -f manifests/40-gateway-tls.yaml
 ```
+
+<span class="small">Plan B: Standalone manifests available in `manifests/troubleshooting/err-gateway-*.yaml`.</span>
+
+---
+
+# Appendix B3 — HTTPRoute Troubleshooting (Developer)
+
+Trigger and diagnose route status conditions on existing `demo/podinfo`:
+
+```bash
+# 1. Trigger NoMatchingListenerHostname (Hostname not matching Gateway listener):
+kubectl -n demo patch httproute podinfo --type=json \
+  -p '[{"op":"replace","path":"/spec/hostnames/0","value":"unauthorized.corp.lab"}]'
+kubectl -n demo describe httproute podinfo # Accepted: False, Reason: NoMatchingListenerHostname
+# Restore: kubectl -n demo patch httproute podinfo --type=json -p '[{"op":"replace","path":"/spec/hostnames/0","value":"podinfo.lab"}]'
+
+# 2. Trigger BackendNotFound (Target Service missing):
+kubectl -n demo patch httproute podinfo --type=json \
+  -p '[{"op":"replace","path":"/spec/rules/0/backendRefs/0/name","value":"missing-svc"}]'
+kubectl -n demo describe httproute podinfo # ResolvedRefs: False, Reason: BackendNotFound
+# Restore: kubectl -n demo patch httproute podinfo --type=json -p '[{"op":"replace","path":"/spec/rules/0/backendRefs/0/name","value":"podinfo-v1"}]'
+```
+
+<span class="small">Plan B: Standalone manifests available in `manifests/troubleshooting/err-httproute-*.yaml`.</span>
 
 ---
 
