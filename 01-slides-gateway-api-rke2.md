@@ -711,7 +711,47 @@ Status:
 
 # Part 3
 
-## Expressiveness: Canary & gRPC
+## Expressiveness: Rules, Filters & Multi-Protocol
+
+---
+
+# Anatomy of an HTTPRoute rule
+
+Every `rules[]` entry in an `HTTPRoute` defines a complete 3-stage processing pipeline:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. MATCHES (AND inside a match / OR across matches[])                      │
+│     • Path (Exact, PathPrefix, RegularExpression)                           │
+│     • Headers, QueryParams, HTTP Method (GET, POST, etc.)                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  2. FILTERS (Ordered pipeline applied before forwarding or returning)       │
+│     • RequestHeaderModifier, URLRewrite, RequestRedirect, CORS, Mirror      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  3. BACKEND REFS (Weighted load distribution & backend-level filters)       │
+│     • Target Service name & port                                            │
+│     • Weight (traffic proportion for canary / blue-green rollouts)          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Predictable execution order:** Match request → execute filters in order → forward across weighted backends.
+- **Discoverable schema:** Inspect any field with `kubectl explain httproute.spec.rules`.
+
+---
+
+# Standard HTTPRoute filter types
+
+| Filter Type | Level | Primary Capability |
+|---|---|---|
+| **`RequestHeaderModifier`** | **Core** | `set`, `add`, or `remove` HTTP request headers sent upstream |
+| **`RequestRedirect`** | **Core** | HTTP 301/302 redirects (`scheme`, `hostname`, `port`, `statusCode`) |
+| **`URLRewrite`** | **Extended** | Rewrite path (`ReplacePrefixMatch`, `ReplaceFullPath`) and `hostname` |
+| **`ResponseHeaderModifier`** | **Extended** | `set`, `add`, or `remove` HTTP response headers returned to client |
+| **`RequestMirror`** | **Extended** | Shadow / duplicate traffic percentage to an audit/test backend |
+| **`CORS`** *(v1.5+)* | **Extended** | Native Cross-Origin Resource Sharing (`allowOrigins`, `methods`, `maxAge`) |
+| **`ExtensionRef`** | **Extended** | Attach implementation-specific filters (e.g. Traefik `Middleware`) |
+
+<span class="small">Core filters are guaranteed 100% portable across all conformant Gateway API controllers (Traefik, Envoy, Cilium, Istio).</span>
 
 ---
 
