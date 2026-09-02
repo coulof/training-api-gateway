@@ -15,6 +15,7 @@ spec:
         app: podinfo
         version: v2
     spec:
+      enableServiceLinks: false
       containers:
         - name: podinfo
           image: ghcr.io/stefanprodan/podinfo:6.7.0
