@@ -49,6 +49,7 @@ This training guides participants through a hands-on evolution of application ro
     ├── 30-httproute-team-a.yaml      # Lab 7.3: Tenant HTTPRoute
     ├── 31-referencegrant.yaml        # Lab 7.6: Cross-namespace ReferenceGrant
     ├── 40-gateway-tls.yaml           # App. A: HTTPS Gateway with TLS termination
+    ├── 45-gamma-podinfo.yaml         # Reference: GAMMA East-West multi-tier routing
     └── troubleshooting/              # Intentional error triggers for diagnostics
         ├── err-gateway-port-unavailable.yaml
         ├── err-gateway-invalid-certificate.yaml

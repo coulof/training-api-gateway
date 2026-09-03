@@ -1061,31 +1061,81 @@ listeners:
 
 ---
 
-# Mesh convergence (GAMMA)
+# Mesh Convergence: The GAMMA Initiative
 
-Since v1.1, a `Service` can be a `parentRef`:
+**GAMMA** (*Gateway API for Mesh Management and Administration*) — GA in v1.1:
+
+- **The Problem:** `Ingress` only solved North-South traffic. Inter-service **East-West** routing (`Frontend` → `Backend`) was fractured across vendor CRDs (`VirtualService`, `TrafficSplit`, `CiliumEnvoyConfig`).
+- **The Breakthrough:** Direct `HTTPRoute` binding to a **`Service`** (`parentRefs: kind: Service`).
+- **Unified Developer Experience:**
+  - **North-South (Edge):** `parentRefs: [{ kind: Gateway, name: web }]`
+  - **East-West (Mesh):** `parentRefs: [{ kind: Service, name: backend-service }]`
+- Developers declare **canary weights, header routing, and timeouts** with the exact same YAML.
+
+---
+
+# GAMMA Architecture: Edge + Mesh Data Path
+
+<style scoped> pre { font-size: 0.65em; line-height: 1.20; } </style>
+
+```text
+              [ North-South: Edge Ingress ]  curl -H 'Host: podinfo.lab' http://.../frontend
+                            │
+                            ▼
+           ┌──────────────────────────────────┐
+           │   Traefik Gateway (infra/web)    │  parentRefs: Gateway/web
+           └────────────────┬─────────────────┘
+                            │ HTTPRoute (Edge)
+                            ▼
+           ┌──────────────────────────────────┐
+           │     podinfo-frontend (:9898)     │
+           └────────────────┬─────────────────┘
+                            │ Calls http://podinfo-backend:9898/echo
+              [ East-West: Service Mesh ]
+                            ▼
+           ┌──────────────────────────────────┐
+           │    Service Mesh Proxy / eBPF     │  parentRefs: Service/podinfo-backend
+           │   GAMMA HTTPRoute (80% / 20%)    │
+           └────────────────┬─────────────────┘
+                   ┌────────┴────────┐
+                   ▼                 ▼
+           ┌──────────────┐   ┌──────────────┐
+           │  backend-v1  │   │  backend-v2  │
+           └──────────────┘   └──────────────┘
+```
+
+---
+
+# Declarative East-West Routing with Podinfo
+
+Attaching an `HTTPRoute` directly to `Service/podinfo-backend` governs internal traffic:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: cart-retry
-  namespace: shop
+  name: backend-canary
+  namespace: demo
 spec:
   parentRefs:
-    - group: ""
-      kind: Service
-      name: cart-service
-      port: 8080
+    - { group: "", kind: Service, name: podinfo-backend, port: 9898 }
   rules:
-    - timeouts:
-        request: 500ms
+    - timeouts: { request: 500ms }
       backendRefs:
-        - name: cart-service
-          port: 8080
+        - { name: podinfo-backend-v1, port: 9898, weight: 80 }
+        - { name: podinfo-backend-v2, port: 9898, weight: 20 }
 ```
 
-**North-south (ingress) and east-west (mesh) now use the same API.**
+---
+
+# GAMMA Vendor Ecosystem in SUSE & Rancher
+
+| Solution | Mesh Architecture | Relationship to SUSE & RKE2 |
+|---|---|---|
+| **Istio (`rancher-istio`)** | Sidecar (Envoy) or **Ambient Mesh** (sidecarless) | **Primary Rancher Application:** Built into Rancher UI & Marketplace with full GAMMA GA support |
+| **Cilium Service Mesh** | **Sidecarless eBPF** kernel routing + node Envoy | **RKE2 Native CNI:** Supported directly via `cni: cilium`; native Gateway API & GAMMA data plane |
+| **Linkerd** | Lightweight Rust micro-proxy sidecars | CNCF Graduated; founding co-lead of the GAMMA specification |
+| **Traefik Proxy** | **North-South Edge Gateway** | Handles cluster ingress in RKE2; works in tandem with GAMMA meshes *(Traefik Mesh is archived/EOL)* |
 
 ---
 

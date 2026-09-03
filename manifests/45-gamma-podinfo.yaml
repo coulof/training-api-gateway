@@ -1,0 +1,144 @@
+# manifests/45-gamma-podinfo.yaml
+# Reference manifest: Two-tier microservices with GAMMA East-West HTTPRoute
+#
+# Architecture:
+#   Frontend pod calls http://podinfo-backend:9898/echo.
+#   The Service Mesh (Istio / Cilium / Linkerd) intercepts the call at L7
+#   and applies the 80/20 canary split declared in the HTTPRoute below.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo-frontend
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podinfo-frontend
+  template:
+    metadata:
+      labels:
+        app: podinfo-frontend
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_BACKEND_URL
+              value: "http://podinfo-backend:9898/echo"
+            - name: PODINFO_UI_MESSAGE
+              value: "FRONTEND TIER"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo-frontend
+  namespace: demo
+spec:
+  selector:
+    app: podinfo-frontend
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo-backend-v1
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podinfo-backend
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: podinfo-backend
+        version: v1
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_UI_MESSAGE
+              value: "BACKEND V1"
+            - name: PODINFO_UI_COLOR
+              value: "#30BA78"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo-backend-v2
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podinfo-backend
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: podinfo-backend
+        version: v2
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_UI_MESSAGE
+              value: "BACKEND V2"
+            - name: PODINFO_UI_COLOR
+              value: "#FE7C3F"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo-backend
+  namespace: demo
+spec:
+  selector:
+    app: podinfo-backend
+  ports:
+    - name: http
+      port: 9898
+      targetPort: http
+---
+# GAMMA HTTPRoute attached directly to Service/podinfo-backend
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: podinfo-backend-mesh
+  namespace: demo
+spec:
+  parentRefs:
+    - group: ""
+      kind: Service
+      name: podinfo-backend
+      port: 9898
+  rules:
+    - timeouts:
+        request: 500ms
+      backendRefs:
+        - name: podinfo-backend-v1
+          port: 9898
+          weight: 80
+        - name: podinfo-backend-v2
+          port: 9898
+          weight: 20

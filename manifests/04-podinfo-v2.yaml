@@ -15,6 +15,8 @@ spec:
         app: podinfo
         version: v2
     spec:
+      # Disables legacy Docker-link env vars (e.g. PODINFO_GRPC_PORT="tcp://...").
+      # Required when 'podinfo-grpc' service is added in Lab 6 to prevent Viper integer parsing panics.
       enableServiceLinks: false
       containers:
         - name: podinfo
