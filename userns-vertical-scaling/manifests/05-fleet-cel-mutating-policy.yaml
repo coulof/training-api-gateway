@@ -1,0 +1,30 @@
+# Lab 5 (Combo): Fleet GitOps Fleet-wide User Namespace Enforcement
+# Uses native Kubernetes 1.36 MutatingAdmissionPolicy (CEL) to automatically inject
+# hostUsers: false on pods created in namespaces labeled with userns-enforced=true.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: force-userns
+spec:
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      resources: ["pods"]
+      operations: ["CREATE"]
+  mutations:
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      expression: >
+        Object{spec: Object.spec{hostUsers: false}}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: force-userns-binding
+spec:
+  policyName: force-userns
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        userns-enforced: "true"

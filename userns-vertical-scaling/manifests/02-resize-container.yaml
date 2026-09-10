@@ -1,0 +1,26 @@
+# Lab 2: Container-Level In-Place Vertical Scaling (GA in K8s 1.35+)
+# The resizePolicy ensures kubelet updates cgroup v2 limits live without killing the container.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resize-demo
+  namespace: userns-lab
+  labels:
+    app: resize-demo
+spec:
+  containers:
+  - name: burn
+    image: busybox:1.36
+    command: ["sh", "-c", "yes > /dev/null & yes > /dev/null & sleep 3600"]
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+    resizePolicy:
+    - resourceName: cpu
+      restartPolicy: NotRequired
+    - resourceName: memory
+      restartPolicy: NotRequired

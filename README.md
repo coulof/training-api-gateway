@@ -127,6 +127,8 @@ curl -s -o /dev/null -w "%{http_code}\n" "$GW_URL/"   # Expect 404 (Traefik is a
 ## 🔮 Roadmap & Future Extensions
 
 - [x] **Core Gateway API Workshop (North-South with Traefik):** Labs 1–7 covering Ingress migration, URL rewriting, traffic splitting, gRPC, and multi-tenant `ReferenceGrant`.
+- [x] **User Namespaces & In-Place Pod Vertical Scaling:** Dedicated training package for Kubernetes 1.36 GA `hostUsers: false`, container-level in-place resize, pod-level aggregate resize, zero-downtime Gateway traffic proof, and Fleet CEL policies.
+  * 📋 *Explore the training package:* [`userns-vertical-scaling/README.md`](userns-vertical-scaling/README.md)
 - [ ] **Cilium Service Mesh on RKE2 (East-West with GAMMA):** Sidecarless eBPF service mesh module covering inter-service routing with `HTTPRoute` (`parentRefs: kind: Service`), fault injection with `podinfo --random-error`, latency timeouts, and Hubble L7 observability.
   * 📋 *See detailed technical specification:* [`ROADMAP-CILIUM-SERVICE-MESH.md`](ROADMAP-CILIUM-SERVICE-MESH.md)
 

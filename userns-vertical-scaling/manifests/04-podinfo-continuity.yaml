@@ -1,0 +1,77 @@
+# Lab 4 (Combo): Real-world Service Continuity during In-Place Resize
+# Demonstrates zero connection drops and unchanged Pod IP under sustained Gateway API traffic.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo-resize
+  namespace: userns-lab
+  labels:
+    app: podinfo-resize
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podinfo-resize
+  template:
+    metadata:
+      labels:
+        app: podinfo-resize
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: podinfo
+        image: ghcr.io/stefanprodan/podinfo:6.7.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 9898
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        resizePolicy:
+        - resourceName: cpu
+          restartPolicy: NotRequired
+        - resourceName: memory
+          restartPolicy: NotRequired
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo-resize
+  namespace: userns-lab
+  labels:
+    app: podinfo-resize
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9898
+    targetPort: http
+    name: http
+  selector:
+    app: podinfo-resize
+---
+# HTTPRoute attaching to the shared Traefik Gateway
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: podinfo-resize-route
+  namespace: userns-lab
+spec:
+  parentRefs:
+  - name: web
+    namespace: infra
+    sectionName: http
+  hostnames:
+  - "resize.lab"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: podinfo-resize
+      port: 9898
