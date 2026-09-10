@@ -11,6 +11,17 @@ This training guides participants through a hands-on evolution of application ro
 2. **The Gateway API Era (2026):** Enable Traefik's Gateway provider, split infrastructure and routing concerns into role-oriented resources (`GatewayClass` → `Gateway` → `HTTPRoute`), implement typed rewrites, weighted traffic splitting, header-based canary releases, L7 gRPC routing, and cross-namespace delegation with `ReferenceGrant`.
 3. **The Closing Argument:** Run `git diff` on your manifests repository to visually contrast the fragile Ingress annotation stack against standard, typed Gateway API declarations.
 
+### ⏱️ Schedule & Agenda (3h30)
+
+| Time | Part & Topic | Hands-on Labs & Focus |
+|:---:|---|---|
+| **00:00 – 00:45** | **Part 1 — The Ingress Era** | • **Lab 1:** Ingress baseline (`podinfo-v1`)<br>• **Lab 2:** Path rewrite, canary hacks & RBAC flaw |
+| **00:45 – 01:30** | **Part 2 — Gateway API Architecture & RKE2** | • **Lab 3:** Enable Traefik provider via `HelmChartConfig`<br>• **Lab 4:** Gateway + HTTPRoute, typed `URLRewrite`, scoped RBAC |
+| **01:30 – 01:45** | ☕ **Coffee & Networking Break** | — |
+| **01:45 – 02:30** | **Part 3 — Advanced Routing & gRPC** | • **Lab 5:** 90/10 traffic splitting & `X-Canary` header routing<br>• **Lab 6:** Deploy gRPC, route RPC methods, verify with `grpcurl` |
+| **02:30 – 03:05** | **Part 4 — Multi-Tenancy & Safe Delegation** | • **Lab 7:** Cross-namespace attachment, `RefNotPermitted` & `ReferenceGrant` |
+| **03:05 – 03:30** | **Part 5 — Production Reality, GAMMA & Wrap** | • Static vs Dynamic RKE2 architecture, Service Mesh (**GAMMA**), migration & `git diff` |
+
 ---
 
 ## 📂 Repository Structure

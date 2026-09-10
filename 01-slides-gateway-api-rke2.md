@@ -77,20 +77,18 @@ Adjust depth of Part 1 accordingly — if the room is senior, compress History t
 
 ---
 
-# How today works
+# Workshop Agenda & Structure
 
-**Concept, then immediately prove it on your own cluster.**
+**Concept Briefing ➔ Immediate Hands-on Execution ➔ GitOps Manifest Diff.**
 
-| | Block | Labs | Focus |
-|---|---|---|---|
-| 1 | Ingress: what it gave us, what it cost | **1–2** | Baseline Ingress & annotation pain |
-| 2 | Why Gateway API — the resource model | **3–4** | Enable in RKE2 & HTTPRoute routing |
-| — | *Break* | | |
-| 3 | Expressiveness: canary, headers, gRPC | **5–6** | Weighted splitting & GRPCRoute |
-| 4 | Multi-tenancy and safe references | **7** | Shared Gateway & ReferenceGrant |
-| 5 | RKE2 reality, migration strategy, wrap | — | Production architecture & git diff |
-
-Every lab has ready-to-use manifests in `manifests/`. We configure **podinfo** first the Ingress way, then the Gateway API way, tracked in git.
+| Time | Part & Topic | Labs | Key Takeaways |
+|:---:|---|:---:|---|
+| **00:00** | **1. The Ingress Era (2015–2020)** | **1–2** | Baseline routing, annotation explosion & RBAC flaw |
+| **00:45** | **2. Gateway API & RKE2 Architecture** | **3–4** | Traefik provider, Gateway + HTTPRoute, typed rewrites |
+| **01:30** | ☕ *Coffee & Catch-up Break (15 min)* | — | — |
+| **01:45** | **3. Canary, Headers & gRPC** | **5–6** | 90/10 weight shifts, `X-Canary`, L7 GRPCRoute (`h2c`) |
+| **02:30** | **4. Multi-Tenancy & Safe Delegation** | **7** | Shared Gateway, `RefNotPermitted`, ReferenceGrant |
+| **03:05** | **5. Production Reality, GAMMA & Wrap** | — | Static vs Dynamic, Service Mesh, migration & `git diff` |
 
 ---
 
@@ -105,7 +103,7 @@ Every lab has ready-to-use manifests in `manifests/`. We configure **podinfo** f
 
 ```bash
 export KUBECONFIG=./gwapi-lab.kubeconfig
-./scripts/00-check-prereqs.sh          # verify tooling, RBAC, Traefik, data path
+./00-check-prereqs.sh                  # verify tooling, RBAC, Traefik, data path
 
 # Gateway URL: port-forward fallback works from anywhere a kubeconfig works
 kubectl -n kube-system port-forward svc/rke2-traefik 8080:80 &
