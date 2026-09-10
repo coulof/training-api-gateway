@@ -15,21 +15,24 @@ This training explores two critical pod-level enhancements delivered in **Kubern
    * **Container-Level Resize (GA in 1.35+):** Mutate `.spec.containers[*].resources` on running pods without restart or recreation (`restartCount: 0`).
    * **Pod-Level Aggregate Resize (Beta in 1.36):** Define a shared resource budget across multi-container / sidecar-heavy pods (`spec.resources`) and scale the entire pool dynamically.
 
-### 🔬 Architecture Deep Dive: Capabilities, `securityContext` & User Namespaces
+### 🔬 Architecture Deep Dive: The "Locked Room" Analogy & The Host Master Key
 
-Kubernetes engineers use `securityContext` daily, but what does it actually map to in the Linux kernel?
+A common paradox engineers encounter is: *"If a pod running as UID 0 is already confined by Linux namespaces, why is it considered dangerous?"*
 
-| Kubernetes YAML Field | Underlying Linux Kernel Primitive | Behavior without userns (`hostUsers: true`) | Behavior with userns (`hostUsers: false`) |
+#### The "Locked Room" Paradox
+* **Namespaces are the Walls (Visibility):** `mnt`, `pid`, `net`, `ipc`, `uts` lock the container process in a private room. It cannot see host processes or the host filesystem.
+* **UID / GID is the Key (Identity):** Historically, Kubernetes left the 8th namespace (**User Namespace**) disabled. Inside the locked room, the process held the **Host Master Key** (`UID 0 in init_user_ns`).
+* **When the Walls Fail:**
+  1. **Opening a Window (`hostPath` / Sockets):** If you mount `/tmp`, `/var/log`, or containerd sockets into the pod, the kernel's DAC engine checks: *"Is caller UID 0 allowed to overwrite this UID 0 file?"* ➔ **YES.**
+  2. **Cracks in the Wall (Breakout CVEs):** If a runtime flaw (e.g. `runc` CVE-2019-5736 or CVE-2024-21626) leaks a file descriptor, a process running as **UID 1000** lands on the host as an unprivileged nobody. But a process running as **UID 0** lands with **full host root authority** and compromises the entire node.
+
+#### The Difference in One Metaphor
+
+| Setup | Where is the Process? | Host Identity | If It Breaks Out... |
 |---|---|---|---|
-| `runAsUser: 0` | Process credential (`setuid(0)`) | ⚠️ **Dangerous:** Real root on host kernel (`UID 0 in init_user_ns`). | 🛡️ **Safe:** Container sees UID 0; host kernel maps to unprivileged `UID 100000+`. |
-| `runAsNonRoot: true` | Admission validation check | **Mandatory legacy workaround:** Used for 10 years to stop root escapes. Breaks vendor COTS. | **Defense-in-depth:** Still good practice, but root inside container no longer threatens host. |
-| `capabilities.add: ["NET_ADMIN"]` | Capability bounding set (`cap_effective`) | 💥 **Host threat:** Can manipulate host network interfaces or routing tables. | 🔒 **Scoped:** Can configure interfaces **only inside the pod's private netns**. Zero host access. |
-| `privileged: true` | Full host device & capability access | Grants full root and device access on the host node. | 🚫 **Forbidden:** K8s API server rejects `privileged: true` when `hostUsers: false` is set. |
-| `allowPrivilegeEscalation: false` | `prctl(PR_SET_NO_NEW_PRIVS)` | Prevents `setuid` binary escalation. | Prevents `setuid` binary escalation inside container userns. |
-
-* **Why is `hostUsers` a top-level `spec` field, not inside `securityContext`?**  
-  Just like `spec.hostNetwork` and `spec.hostPID`, a Linux User Namespace is shared across **all containers in a Pod**. Therefore, it is declared at the Pod level (`spec.hostUsers: false`).
-* **Discretionary Access Control (DAC) Trap:** Host node files (`/etc`, `/run/containerd.sock`, `/var/lib/kubelet`) are owned by `UID 0`. If a process breaks out (via `hostPath` or runc CVEs), the kernel's DAC engine allows `UID 0` without requiring special capabilities because it *is* root. User namespaces eliminate this by ensuring container root is never host root.
+| **Default K8s (`runAsUser: 0`)** | Inside 7 namespaces (locked room) | **UID 0 (Root)** | 🚨 **Total Host Takeover** (holds Master Key) |
+| **Legacy Fix (`runAsUser: 1000`)** | Inside 7 namespaces (locked room) | **UID 1000 (User)** | 🛡️ **Blocked** (unprivileged), *breaks apps needing root inside!* |
+| **User Namespaces (`hostUsers: false`)** | Inside **8 namespaces** (including userns) | **UID 100000+** | 🛡️ **Safe & Seamless:** Root inside room, visitor badge on host. |
 
 #### 📚 Upstream Specifications & Kernel Sources
 
