@@ -117,22 +117,45 @@ export KUBECONFIG=./gwapi-lab.kubeconfig
 # The Linux Container Isolation Dilemma
 
 - Containers are **not VMs** — they share the host Linux kernel.
-- **Traditional Kubernetes Namespaces:**
-  - `pid`, `net`, `ipc`, `uts`, `mnt` provide process & network visibility isolation.
-- **The Missing Link: User Namespaces:**
-  - By default, process running as **UID 0 (root)** inside a container **is UID 0 on the host kernel**.
-  - If a breakout occurs (kernel CVE, misconfigured `hostPath`, container runtime flaw), the attacker possesses **full host root privileges**.
+- **The 8 Linux Kernel Namespaces:**
+  - `mnt`, `pid`, `net`, `ipc`, `uts`, `cgroup`, `time` ➔ **Isolated by K8s**
+  - **`user` (UID/GID & Capabilities) ➔ Left unisolated in `init_user_ns`!**
+- **The "View vs. Identity" Illusion:**
+  - Container sees itself as `PID 1` inside its own mount namespace.
+  - But to the host kernel's security model, the process **is `UID 0 in init_user_ns`**.
+  - If a breakout occurs (kernel bug, `hostPath`, runtime socket), it has **full host root privileges**.
 
 <span class="warn">Root inside container == Root on host node.</span>
 
 ---
 
-# The 6-Year Road to User Namespaces GA
+# Why Capabilities & Rootless Podman Differ
 
-- **Alpha in K8s 1.25 (2022) ➔ Stable/GA in K8s 1.36 (2026):**
-  - Blocked for years by Linux kernel storage requirements.
-  - Needed kernel **idmapped mounts** (`idmap`) across overlayfs, ext4, xfs, and btrfs.
-- **Enabling User Namespaces in Kubernetes 1.36:**
+- **Why Linux Capabilities alone do NOT protect the host:**
+  - Capabilities are **scoped to a user namespace**. Without userns, retained capabilities (`CAP_DAC_OVERRIDE`, `CAP_FOWNER`) apply to the **host's root namespace**.
+  - **Discretionary Access Control (DAC):** Host root files (`/etc`, `/run/containerd.sock`) are owned by `UID 0`. Kernel DAC permits `UID 0` without needing special capabilities!
+- **Why did Podman have rootless in 2019, while K8s took until 2026?**
+  - Podman used `$HOME` storage & user-space network emulation (`slirp4netns`).
+  - Kubernetes required **multi-tenant CSI persistence** without recursive `chown` on petabytes of PVCs, plus high-performance CNI eBPF networking.
+
+---
+
+# The Breakthrough: Kernel idmapped Mounts & KEP-127
+
+- **Linux Kernel Foundation (`idmap` mounts):**
+  - Authored by Christian Brauner in Linux **5.12**, extended to OverlayFS in **5.19 & 6.3+**.
+  - Translates UID/GID in VFS memory *without* modifying on-disk inode permissions!
+  - *Source:* [`Documentation/filesystems/idmappings.rst`](https://docs.kernel.org/filesystems/idmappings.html) & [LWN.net](https://lwn.net/Articles/896255/)
+- **Upstream Kubernetes Tracking & Tickets:**
+  - **KEP-127:** [*Support User Namespaces in Pods*](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/127-user-namespaces) (`kubernetes/enhancements#127`)
+  - **k/k Tracking Issue:** [`kubernetes/kubernetes#102394`](https://github.com/kubernetes/kubernetes/issues/102394) (and KEP `#127`)
+  - **Implementation Milestones:** Alpha in 1.25 (`#111847`), Beta in 1.30 (`#120406`), GA in 1.36 (`#127394`).
+
+---
+
+# Enabling User Namespaces in Kubernetes 1.36
+
+- **Stable/GA in Kubernetes 1.36 ("Haru"):**
   - Exactly one declarative field in the Pod spec:
   ```yaml
   spec:
@@ -141,6 +164,7 @@ export KUBECONFIG=./gwapi-lab.kubeconfig
 - **What happens under the hood:**
   - Container runtime assigns an unprivileged subordinate UID range (e.g. `100000:65536`) to the pod.
   - Root inside container maps to an unprivileged, unique UID on the host node.
+  - Full root capabilities inside the container userns, **zero capabilities on host kernel**.
 
 ---
 

@@ -15,6 +15,25 @@ This training explores two critical pod-level enhancements delivered in **Kubern
    * **Container-Level Resize (GA in 1.35+):** Mutate `.spec.containers[*].resources` on running pods without restart or recreation (`restartCount: 0`).
    * **Pod-Level Aggregate Resize (Beta in 1.36):** Define a shared resource budget across multi-container / sidecar-heavy pods (`spec.resources`) and scale the entire pool dynamically.
 
+### 🔬 Architecture Deep Dive: Capabilities vs. User Namespaces
+
+A common question is: *"If container engines already drop dangerous capabilities, why do we need User Namespaces?"*
+
+* **Capabilities are scoped to a User Namespace:** In standard Kubernetes (without user namespaces), pods run in the host's root namespace (`init_user_ns`). Any retained default capability (`CAP_DAC_OVERRIDE`, `CAP_FOWNER`) applies directly against the host kernel.
+* **Discretionary Access Control (DAC) Trap:** Host node files (`/etc`, `/run/containerd.sock`, `/var/lib/kubelet`) are owned by `UID 0`. If a process breaks out (via `hostPath` or runc CVEs), the kernel's DAC engine allows `UID 0` without requiring special capabilities because it *is* root.
+* **The Solution:** User namespaces map container `UID 0` to host `UID 100000+`. Even with full root capabilities inside its container userns, the process has **zero privileges** and cannot write to root-owned files on the host node.
+
+#### 📚 Upstream Specifications & Kernel Sources
+
+* **Linux Kernel idmapped mounts:**
+  * Created by Christian Brauner in Linux 5.12, expanded to OverlayFS in 5.19 and 6.3+.
+  * [Linux Kernel Documentation: `Documentation/filesystems/idmappings.rst`](https://docs.kernel.org/filesystems/idmappings.html)
+  * [LWN.net: Extending idmapped mounts to overlayfs](https://lwn.net/Articles/896255/)
+* **Kubernetes Upstream Tracking & KEPs:**
+  * **KEP-127:** [*Support User Namespaces in Pods*](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/127-user-namespaces) (`kubernetes/enhancements#127`)
+  * **k/k Tracking Issue:** [`kubernetes/kubernetes#102394`](https://github.com/kubernetes/kubernetes/issues/102394)
+  * **Core PRs:** Alpha in 1.25 ([#111847](https://github.com/kubernetes/kubernetes/pull/111847)), Beta in 1.30 ([#120406](https://github.com/kubernetes/kubernetes/pull/120406)), GA in 1.36 ([#127394](https://github.com/kubernetes/kubernetes/pull/127394)).
+
 ---
 
 ## ⏱️ Schedule & Agenda (3h)
