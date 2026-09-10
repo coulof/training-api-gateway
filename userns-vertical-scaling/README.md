@@ -15,13 +15,21 @@ This training explores two critical pod-level enhancements delivered in **Kubern
    * **Container-Level Resize (GA in 1.35+):** Mutate `.spec.containers[*].resources` on running pods without restart or recreation (`restartCount: 0`).
    * **Pod-Level Aggregate Resize (Beta in 1.36):** Define a shared resource budget across multi-container / sidecar-heavy pods (`spec.resources`) and scale the entire pool dynamically.
 
-### 🔬 Architecture Deep Dive: Capabilities vs. User Namespaces
+### 🔬 Architecture Deep Dive: Capabilities, `securityContext` & User Namespaces
 
-A common question is: *"If container engines already drop dangerous capabilities, why do we need User Namespaces?"*
+Kubernetes engineers use `securityContext` daily, but what does it actually map to in the Linux kernel?
 
-* **Capabilities are scoped to a User Namespace:** In standard Kubernetes (without user namespaces), pods run in the host's root namespace (`init_user_ns`). Any retained default capability (`CAP_DAC_OVERRIDE`, `CAP_FOWNER`) applies directly against the host kernel.
-* **Discretionary Access Control (DAC) Trap:** Host node files (`/etc`, `/run/containerd.sock`, `/var/lib/kubelet`) are owned by `UID 0`. If a process breaks out (via `hostPath` or runc CVEs), the kernel's DAC engine allows `UID 0` without requiring special capabilities because it *is* root.
-* **The Solution:** User namespaces map container `UID 0` to host `UID 100000+`. Even with full root capabilities inside its container userns, the process has **zero privileges** and cannot write to root-owned files on the host node.
+| Kubernetes YAML Field | Underlying Linux Kernel Primitive | Behavior without userns (`hostUsers: true`) | Behavior with userns (`hostUsers: false`) |
+|---|---|---|---|
+| `runAsUser: 0` | Process credential (`setuid(0)`) | ⚠️ **Dangerous:** Real root on host kernel (`UID 0 in init_user_ns`). | 🛡️ **Safe:** Container sees UID 0; host kernel maps to unprivileged `UID 100000+`. |
+| `runAsNonRoot: true` | Admission validation check | **Mandatory legacy workaround:** Used for 10 years to stop root escapes. Breaks vendor COTS. | **Defense-in-depth:** Still good practice, but root inside container no longer threatens host. |
+| `capabilities.add: ["NET_ADMIN"]` | Capability bounding set (`cap_effective`) | 💥 **Host threat:** Can manipulate host network interfaces or routing tables. | 🔒 **Scoped:** Can configure interfaces **only inside the pod's private netns**. Zero host access. |
+| `privileged: true` | Full host device & capability access | Grants full root and device access on the host node. | 🚫 **Forbidden:** K8s API server rejects `privileged: true` when `hostUsers: false` is set. |
+| `allowPrivilegeEscalation: false` | `prctl(PR_SET_NO_NEW_PRIVS)` | Prevents `setuid` binary escalation. | Prevents `setuid` binary escalation inside container userns. |
+
+* **Why is `hostUsers` a top-level `spec` field, not inside `securityContext`?**  
+  Just like `spec.hostNetwork` and `spec.hostPID`, a Linux User Namespace is shared across **all containers in a Pod**. Therefore, it is declared at the Pod level (`spec.hostUsers: false`).
+* **Discretionary Access Control (DAC) Trap:** Host node files (`/etc`, `/run/containerd.sock`, `/var/lib/kubelet`) are owned by `UID 0`. If a process breaks out (via `hostPath` or runc CVEs), the kernel's DAC engine allows `UID 0` without requiring special capabilities because it *is* root. User namespaces eliminate this by ensuring container root is never host root.
 
 #### 📚 Upstream Specifications & Kernel Sources
 

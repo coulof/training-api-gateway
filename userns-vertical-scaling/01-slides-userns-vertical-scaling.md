@@ -114,15 +114,51 @@ export KUBECONFIG=./gwapi-lab.kubeconfig
 
 ---
 
-# The Linux Container Isolation Dilemma
+# 🧊 Warm-up: How Do We Secure Pods Today?
 
-- Containers are **not VMs** — they share the host Linux kernel.
+**Three quick questions for the room:**
+
+1. *"Who can name the core Linux primitives behind container isolation?"*
+   ➔ Namespaces, Cgroups, Chroot/Pivot_root, Capabilities, Seccomp.
+2. *"Who has configured `securityContext` on their Kubernetes Pods?"*
+   ➔ `runAsUser: 1000`, `runAsNonRoot: true`, `capabilities.drop: ["ALL"]`.
+3. **Pop Quiz:** *"If a Pod runs as `runAsUser: 0`, what user is that on the host node?"*
+
+<!--
+Presenter notes:
+Ask the room to raise hands on question 3.
+Most participants assume namespaces isolate user identity and think container root is virtual.
+Deliver the punchline: To the host kernel, UID 0 is the exact same root running systemd and the node!
+-->
+
+---
+
+# The securityContext Bridge: YAML to Kernel
+
+Kubernetes `securityContext` delegates directly to Linux kernel knobs:
+
+| `securityContext` Field | Underlying Linux Kernel Primitive |
+|---|---|
+| `runAsUser: 1000` / `runAsGroup` | Process credential (`setuid(1000)` / `setgid()`) |
+| `capabilities.add` / `drop` | Linux Capability bounding set (`cap_effective`) |
+| `readOnlyRootFilesystem: true` | Mount namespace read-only mount flag |
+| `allowPrivilegeEscalation: false` | `prctl(PR_SET_NO_NEW_PRIVS)` |
+| `seccompProfile` | `seccomp-bpf` system call filter |
+
+**The Enterprise Dilemma:** Platform teams spent a decade mandating `runAsNonRoot: true`, constantly breaking vendor COTS images and developer entrypoints.
+
+---
+
+# The "View vs. Identity" Illusion
+
+Containers isolate **visibility views**, not **kernel identity**:
+
 - **The 8 Linux Kernel Namespaces:**
   - `mnt`, `pid`, `net`, `ipc`, `uts`, `cgroup`, `time` ➔ **Isolated by K8s**
   - **`user` (UID/GID & Capabilities) ➔ Left unisolated in `init_user_ns`!**
-- **The "View vs. Identity" Illusion:**
-  - Container sees itself as `PID 1` inside its own mount namespace.
-  - But to the host kernel's security model, the process **is `UID 0 in init_user_ns`**.
+- **The Dilemma:**
+  - Container sees `PID 1` inside its private mount namespace.
+  - But to the host kernel's security engine, the process **is `UID 0 in init_user_ns`**.
   - If a breakout occurs (kernel bug, `hostPath`, runtime socket), it has **full host root privileges**.
 
 <span class="warn">Root inside container == Root on host node.</span>
@@ -153,18 +189,21 @@ export KUBECONFIG=./gwapi-lab.kubeconfig
 
 ---
 
-# Enabling User Namespaces in Kubernetes 1.36
+# Enabling User Namespaces: spec.hostUsers
 
-- **Stable/GA in Kubernetes 1.36 ("Haru"):**
-  - Exactly one declarative field in the Pod spec:
-  ```yaml
-  spec:
-    hostUsers: false
-  ```
-- **What happens under the hood:**
-  - Container runtime assigns an unprivileged subordinate UID range (e.g. `100000:65536`) to the pod.
-  - Root inside container maps to an unprivileged, unique UID on the host node.
-  - Full root capabilities inside the container userns, **zero capabilities on host kernel**.
+Notice the top-level symmetry in `Pod.spec`:
+- `spec.hostNetwork: false` ➔ Private Network Namespace (`CLONE_NEWNET`)
+- `spec.hostPID: false` ➔ Private PID Namespace (`CLONE_NEWPID`)
+- **`spec.hostUsers: false` [NEW in 1.36] ➔ Private User Namespace (`CLONE_NEWUSER`)**
+
+```yaml
+spec:
+  hostUsers: false
+```
+
+- Container runtime maps a dedicated subordinate range (e.g. `100000:65536`) to the pod.
+- Root in container maps to unprivileged `UID 100000` on the node.
+- Container has full root inside its userns; **zero capabilities on the host kernel**.
 
 ---
 
