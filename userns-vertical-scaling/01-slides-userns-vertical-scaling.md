@@ -119,14 +119,15 @@ export KUBECONFIG=./gwapi-lab.kubeconfig
 **Three quick questions for the room:**
 
 1. *"Who can name the core Linux primitives behind container isolation?"*
-   ➔ Namespaces, Cgroups, Chroot/Pivot_root, Capabilities, Seccomp.
+   ➔ **Namespaces, Cgroups, Capabilities, Seccomp.**
 2. *"Who has configured `securityContext` on their Kubernetes Pods?"*
    ➔ `runAsUser: 1000`, `runAsNonRoot: true`, `capabilities.drop: ["ALL"]`.
 3. **Pop Quiz:** *"If a Pod runs as `runAsUser: 0`, what user is that on the host node?"*
+   ➔ **Answer: Root (UID 0)!** Zero user isolation exists by default.
 
 <!--
 Presenter notes:
-Ask the room to raise hands on question 3.
+Ask the room to raise hands on question 3 before showing the answer.
 Most participants assume namespaces isolate user identity and think container root is virtual.
 Deliver the punchline: To the host kernel, UID 0 is the exact same root running systemd and the node!
 -->
