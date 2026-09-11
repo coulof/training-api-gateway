@@ -15,7 +15,13 @@ This training explores two critical pod-level enhancements delivered in **Kubern
    * **Container-Level Resize (GA in 1.35+):** Mutate `.spec.containers[*].resources` on running pods without restart or recreation (`restartCount: 0`).
    * **Pod-Level Aggregate Resize (Beta in 1.36):** Define a shared resource budget across multi-container / sidecar-heavy pods (`spec.resources`) and scale the entire pool dynamically.
 
-### 🔬 Architecture Deep Dive: The "Locked Room" Analogy & The Host Master Key
+### 🔬 Architecture Deep Dive: The 4 Core Linux Primitives & The "Locked Room" Paradox
+
+Linux containers are constructed from 4 foundational kernel primitives:
+* **Namespaces:** Isolates **visibility** (private root `/`, PIDs, network stack, IPC).
+* **Cgroups:** Enforces **resource consumption limits** (prevents CPU/RAM noisy-neighbor DoS).
+* **Capabilities:** Restricts **kernel privileges** (drops module loading, raw disk access).
+* **Seccomp:** Filters **system calls** (blocks dangerous kernel syscalls like `ptrace`).
 
 A common paradox engineers encounter is: *"If a pod running as UID 0 is already confined by Linux namespaces, why is it considered dangerous?"*
 
