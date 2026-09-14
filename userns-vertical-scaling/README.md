@@ -25,33 +25,35 @@ Linux containers are constructed from 4 foundational kernel primitives:
 
 #### The 8 Linux Kernel Namespaces
 
-| # | Namespace | Kernel | What It Isolates | In Kubernetes by default? |
-|---|---|---|---|:---:|
-| 1 | **Mount (`mnt`)** | 2.4.19 (2002) | Filesystem mount points & root directory (`/`) | ✅ **Yes** (since v1.0, 2015) |
-| 2 | **Process ID (`pid`)** | 2.6.24 (2008) | Process IDs (container sees itself as `PID 1`) | ✅ **Yes** (since v1.0, 2015) |
-| 3 | **Network (`net`)** | 2.6.29 (2009) | Network devices, IPs, routes, packet filtering | ✅ **Yes** (since v1.0, 2015) |
-| 4 | **IPC (`ipc`)** | 2.6.19 (2006) | System V IPC & POSIX message queues | ✅ **Yes** (since v1.0, 2015) |
-| 5 | **UTS (Hostname)** | 2.6.19 (2006) | Hostname & NIS domain name | ✅ **Yes** (since v1.0, 2015) |
-| 6 | **Cgroup (`cgroup`)** | 4.6 (2016) | `/proc/self/cgroup` and hierarchy view | ✅ **Yes** (v1.10+, 2018) |
-| 7 | **Time (`time`)** | 5.6 (2020) | Monotonic and boot system clocks | ✅ **Yes** (v1.22+, 2021) |
-| 8 | **User (`user`)** | 3.8 (2013) | **User IDs (UID), Group IDs (GID) & root powers** | ❌ **NO! (GA in 1.36, 2026)** |
+| Namespace | Linux Kernel | What It Isolates | In Kubernetes by default? |
+|---|---|---|:---:|
+| **Mount (`mnt`)** | 2.4.19 (2002) | Filesystem mount points & root directory (`/`) | ✅ **Yes** (since v1.0, 2015) |
+| **UTS (Hostname)** | 2.6.19 (2006) | Hostname & NIS domain name | ✅ **Yes** (since v1.0, 2015) |
+| **IPC (`ipc`)** | 2.6.19 (2006) | System V IPC & POSIX message queues | ✅ **Yes** (since v1.0, 2015) |
+| **Process ID (`pid`)** | 2.6.24 (2008) | Process IDs (container sees itself as `PID 1`) | ✅ **Yes** (since v1.0, 2015) |
+| **Network (`net`)** | 2.6.29 (2009) | Network devices, IPs, routes, packet filtering | ✅ **Yes** (since v1.0, 2015) |
+| **User (`user`)** | 3.8 (2013) | **User IDs (UID), Group IDs (GID) & root powers** | ❌ **NO! (GA in 1.36, 2026)** |
+| **Cgroup (`cgroup`)** | 4.6 (2016) | `/proc/self/cgroup` and hierarchy view | ✅ **Yes** (v1.10+, 2018) |
+| **Time (`time`)** | 5.6 (2020) | Monotonic and boot system clocks | ✅ **Yes** (v1.22+, 2021) |
 
-A common paradox engineers encounter is: *"If a pod running as UID 0 is already confined by Linux namespaces, why is it considered dangerous?"*
+### 🔬 Architecture Deep Dive: Visibility Isolation vs. Kernel Identity
 
-#### The "Locked Room" Paradox
-* **Namespaces are the Walls (Visibility):** `mnt`, `pid`, `net`, `ipc`, `uts` lock the container process in a private room. It cannot see host processes or the host filesystem.
-* **UID / GID is the Key (Identity):** Historically, Kubernetes left the 8th namespace (**User Namespace**) disabled. Inside the locked room, the process held the **Host Master Key** (`UID 0 in init_user_ns`).
-* **When the Walls Fail:**
-  1. **Opening a Window (`hostPath` / Sockets):** If you mount `/tmp`, `/var/log`, or containerd sockets into the pod, the kernel's DAC engine checks: *"Is caller UID 0 allowed to overwrite this UID 0 file?"* ➔ **YES.**
-  2. **Cracks in the Wall (Breakout CVEs):** If a runtime flaw (e.g. `runc` CVE-2019-5736 or CVE-2024-21626) leaks a file descriptor, a process running as **UID 1000** lands on the host as an unprivileged nobody. But a process running as **UID 0** lands with **full host root authority** and compromises the entire node.
+A common architectural question engineers encounter is: *"If a pod running as UID 0 is already confined by Linux namespaces, why is it considered dangerous?"*
 
-#### The Difference in One Metaphor
+#### The Upstream Threat Model (KEP-127)
+* **Visibility Namespaces (`mnt`, `pid`, `net`, `ipc`, `uts`):** Confine the process's view of the system. The container process cannot see host processes or the host filesystem.
+* **Identity & Credentials (`task_struct->cred`):** Without User Namespaces, the process credential in the host kernel is **`UID 0 in init_user_ns`**.
+* **Container Breakout Vectors:**
+  1. **Host Mounts & Sockets (`hostPath`):** When `/tmp` or `/run/containerd.sock` is mounted into the pod, the kernel's DAC engine evaluates: *"Is caller UID 0 allowed to overwrite this UID 0 file?"* ➔ **Allowed immediately**.
+  2. **Runtime & Kernel Breakout CVEs:** In container runtime escapes (e.g. `runc` CVE-2019-5736, CVE-2024-21626), an escaping process running as **UID 1000** lands on the host as an unprivileged user, whereas a process running as **UID 0** lands with **full host root authority** and compromises the entire node.
 
-| Setup | Where is the Process? | Host Identity | If It Breaks Out... |
+#### Container Root vs. Host Security Matrix
+
+| Configuration | Mount & Process Isolation | Host Kernel Identity | Breakout Blast Radius |
 |---|---|---|---|
-| **Default K8s (`runAsUser: 0`)** | Inside 7 namespaces (locked room) | **UID 0 (Root)** | 🚨 **Total Host Takeover** (holds Master Key) |
-| **Legacy Fix (`runAsUser: 1000`)** | Inside 7 namespaces (locked room) | **UID 1000 (User)** | 🛡️ **Blocked** (unprivileged), *breaks apps needing root inside!* |
-| **User Namespaces (`hostUsers: false`)** | Inside **8 namespaces** (including userns) | **UID 100000+** | 🛡️ **Safe & Seamless:** Root inside room, visitor badge on host. |
+| **Default K8s (`runAsUser: 0`)** | Private `mnt`, `pid`, `net` | `UID 0 in init_user_ns` | 🚨 **Host Root Takeover** (Host root authority) |
+| **Legacy Fix (`runAsUser: 1000`)** | Private `mnt`, `pid`, `net` | `UID 1000 in init_user_ns` | 🛡️ **Unprivileged**, *breaks apps needing root inside!* |
+| **User Namespaces (`hostUsers: false`)** | Private `mnt`, `pid`, `net`, `user` | **`UID 100000+`** | 🛡️ **Zero Host Privilege** (Full root inside container) |
 
 #### 📚 Upstream Specifications & Kernel Sources
 

@@ -138,60 +138,61 @@ Deliver the punchline: To the host kernel, UID 0 is the exact same root running 
 
 <style scoped> table { font-size: 0.62em; width: 100%; } </style>
 
-| # | Namespace | Kernel | What It Isolates | In K8s by default? |
-|---|---|---|---|:---:|
-| 1 | **Mount (`mnt`)** | 2.4.19 (2002) | Filesystem mount points & root directory (`/`) | ✅ **Yes** (since v1.0) |
-| 2 | **Process ID (`pid`)** | 2.6.24 (2008) | Process IDs (container sees itself as `PID 1`) | ✅ **Yes** (since v1.0) |
-| 3 | **Network (`net`)** | 2.6.29 (2009) | Network devices, IPs, routes, packet filtering | ✅ **Yes** (since v1.0) |
-| 4 | **IPC (`ipc`)** | 2.6.19 (2006) | System V IPC & POSIX message queues | ✅ **Yes** (since v1.0) |
-| 5 | **UTS (Hostname)** | 2.6.19 (2006) | Hostname & NIS domain name | ✅ **Yes** (since v1.0) |
-| 6 | **Cgroup (`cgroup`)** | 4.6 (2016) | `/proc/self/cgroup` and hierarchy view | ✅ **Yes** (v1.10+) |
-| 7 | **Time (`time`)** | 5.6 (2020) | Monotonic and boot system clocks | ✅ **Yes** (v1.22+) |
-| 8 | **User (`user`)** | 3.8 (2013) | **User IDs (UID), Group IDs (GID) & root powers** | ❌ **NO! (GA in 1.36)** |
+| Namespace | Linux Kernel | What It Isolates | In K8s by default? |
+|---|---|---|:---:|
+| **Mount (`mnt`)** | 2.4.19 (2002) | Filesystem mount points & root directory (`/`) | ✅ **Yes** (since v1.0, 2015) |
+| **UTS (Hostname)** | 2.6.19 (2006) | Hostname & NIS domain name | ✅ **Yes** (since v1.0, 2015) |
+| **IPC (`ipc`)** | 2.6.19 (2006) | System V IPC & POSIX message queues | ✅ **Yes** (since v1.0, 2015) |
+| **Process ID (`pid`)** | 2.6.24 (2008) | Process IDs (container sees itself as `PID 1`) | ✅ **Yes** (since v1.0, 2015) |
+| **Network (`net`)** | 2.6.29 (2009) | Network devices, IPs, routes, packet filtering | ✅ **Yes** (since v1.0, 2015) |
+| **User (`user`)** | 3.8 (2013) | **User IDs (UID), Group IDs (GID) & root powers** | ❌ **NO! (GA in 1.36, 2026)** |
+| **Cgroup (`cgroup`)** | 4.6 (2016) | `/proc/self/cgroup` and hierarchy view | ✅ **Yes** (v1.10+, 2018) |
+| **Time (`time`)** | 5.6 (2020) | Monotonic and boot system clocks | ✅ **Yes** (v1.22+, 2021) |
 
-<span class="small">K8s v1.0 isolated 5 namespaces. The 8th (`user`) remained unisolated for 11 years until K8s 1.36.</span>
-
----
-
-# The Locked Room Paradox: Aren't Containers Confined?
-
-**"Wait, if a container runs as UID 0, isn't it still trapped in its namespaces?"**
-
-- **YES! The walls are real:**
-  - `mnt` (Mount): Cannot see the host's root filesystem (`/`).
-  - `pid` (Process): Cannot see host processes or other pods (`PID 1`).
-  - `net` (Network): Private virtual IP and routing table.
-- **The Catch:**
-  - **Namespaces build the walls (Visibility). They do NOT change identity (The Key).**
-  - Inside the locked room, the process holds the **Host Master Key** (`UID 0 in init_user_ns`).
+<span class="small">`user` existed in Linux since 2013, but was unisolated in Kubernetes for 11 years until K8s 1.36.</span>
 
 ---
 
-# When the Walls Fail: Windows and Cracks
+# Visibility Isolation vs. Kernel Identity
 
-*"If the walls are intact, why does holding the Master Key matter?"*
+**"If a Pod runs as `runAsUser: 0`, isn't it still trapped in its namespaces?"**
 
-- **1. Opening a Window (`hostPath` / Sockets):**
-  - Mount `/tmp`, `/var/log`, or containerd socket into the pod.
-  - Linux kernel checks host permissions: *"Is caller UID 0 allowed to overwrite this UID 0 file?"* ➔ **YES.**
-- **2. Cracks in the Wall (Breakout CVEs):**
-  - Runc / kernel escapes (CVE-2019-5736, CVE-2024-21626) leak host file descriptors.
-  - If escaping process is **UID 1000**, it lands as an unprivileged nobody.
-  - If escaping process is **UID 0**, it lands with **full root authority** and owns the node!
+- **YES! Visibility Isolation is intact:**
+  - `mnt` (Mount): Private container rootfs; cannot see the host's `/`.
+  - `pid` (Process): Process tree starts at `PID 1`; cannot see host processes.
+  - `net` (Network): Private virtual ethernet interface, IP, and routing table.
+- **The Security Flaw:**
+  - **Namespaces isolate visibility (what a process sees), NOT identity (who the kernel authorizes).**
+  - Without User Namespaces, the process credential is **`UID 0 in init_user_ns`**.
 
-<span class="warn">A single crack in the wall becomes total host compromise.</span>
+---
+
+# The Container Breakout Threat Model (KEP-127)
+
+> *"Pods run with the host's user namespace by default. A process running as UID 0 in a pod runs as UID 0 on the host."* — **KEP-127**
+
+- **1. Host Mounts & Sockets (`hostPath`):**
+  - Mounting `/tmp` or `/run/containerd.sock` into the pod.
+  - Host DAC checks `euid == 0` against root-owned files ➔ **Allowed immediately without special capabilities**.
+- **2. Runtime & Kernel Breakout CVEs:**
+  - Escapes from `runc` or kernel bugs (CVE-2019-5736, CVE-2024-21626).
+  - An escaping `UID 1000` process lands as an unprivileged nobody on the node.
+  - An escaping `UID 0` process lands with **full host root authority** and owns the node!
+
+<span class="warn">A container escape by UID 0 results in instant node compromise.</span>
 
 ---
 
 # The Solution: User Namespaces & idmap Mounts
 
 - **`spec.hostUsers: false`:**
-  - Swaps the master key for an unprivileged visitor badge (`UID 100000+`).
-  - Container enjoys full root inside its room; **zero privileges on host kernel**.
+  - Virtualizes the UID/GID space (`man 7 user_namespaces`).
+  - Maps container `UID 0` to unprivileged subordinate `UID 100000+` on host.
+  - Full root inside container user namespace, **zero capabilities in `init_user_ns`**.
 - **Why Podman in 2019, but Kubernetes in 2026?**
-  - Podman used single-machine local `$HOME` filesystems.
+  - Podman used single-machine local `$HOME` storage.
   - Kubernetes required **multi-tenant CSI persistence** without recursive `chown` on petabytes of PVCs ➔ enabled by Christian Brauner's **Linux idmapped mounts** (Linux 5.12 ➔ 6.3+).
-- **Upstream Sources:**
+- **Upstream Specifications & Tickets:**
   - Kernel: [`Documentation/filesystems/idmappings.rst`](https://docs.kernel.org/filesystems/idmappings.html)
   - Kubernetes: [KEP-127](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/127-user-namespaces) / Tracking Issue: [`kubernetes/kubernetes#102394`](https://github.com/kubernetes/kubernetes/issues/102394)
 
@@ -559,13 +560,13 @@ Before promising User Namespaces or In-Place Resize in an engagement:
 
 ---
 
-# Summary: The Difference in One Metaphor
+# Summary: Container Root vs. Host Security Matrix
 
-| Setup | Where is the Process? | Host Identity | If It Breaks Out... |
+| Configuration | Mount & Process Isolation | Host Kernel Identity | Breakout Blast Radius |
 |---|---|---|---|
-| **Default K8s (`runAsUser: 0`)** | Inside 7 namespaces (locked room) | **UID 0 (Root)** | 🚨 **Total Host Takeover** (holds Master Key) |
-| **Legacy Fix (`runAsUser: 1000`)** | Inside 7 namespaces (locked room) | **UID 1000 (User)** | 🛡️ **Blocked** (unprivileged), *breaks apps needing root inside!* |
-| **User Namespaces (`hostUsers: false`)** | Inside **8 namespaces** (including userns) | **UID 100000+** | 🛡️ **Safe & Seamless:** Root inside room, visitor badge on host. |
+| **Default K8s (`runAsUser: 0`)** | Private `mnt`, `pid`, `net` | `UID 0 in init_user_ns` | 🚨 **Host Root Takeover** (Host root authority) |
+| **Legacy Fix (`runAsUser: 1000`)** | Private `mnt`, `pid`, `net` | `UID 1000 in init_user_ns` | 🛡️ **Unprivileged**, *breaks apps needing root inside!* |
+| **User Namespaces (`hostUsers: false`)** | Private `mnt`, `pid`, `net`, `user` | **`UID 100000+`** | 🛡️ **Zero Host Privilege** (Full root inside container) |
 
 <span class="small">Delivered natively in Kubernetes 1.36 on RKE2 with Linux kernel ≥ 6.3.</span>
 
