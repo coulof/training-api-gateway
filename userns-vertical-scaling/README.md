@@ -79,7 +79,7 @@ A common architectural question engineers encounter is: *"If a pod running as UI
 
 ---
 
-## ⏱️ Schedule & Agenda (3h)
+## ⏱️ Schedule & Agenda (2h30)
 
 | Time | Module & Topic | Hands-on Labs & Focus |
 |:---:|---|---|
@@ -87,8 +87,7 @@ A common architectural question engineers encounter is: *"If a pod running as UI
 | **00:45 – 01:30** | **Part 2 — Container In-Place Scaling (GA)** | • **Lab 2:** CPU load test under live `kubectl patch --subresource resize`<br>• Inspecting `status.conditions` & `restartCount: 0` |
 | **01:30 – 01:45** | ☕ **Coffee & Networking Break** | — |
 | **01:45 – 02:15** | **Part 3 — Pod-Level Aggregate Scaling (Beta)** | • **Lab 3:** Shared `spec.resources` budget across multi-container pods |
-| **02:15 – 02:45** | **Part 4 — Enterprise Combos (Gateway + CEL)** | • **Lab 4:** Zero-downtime benchmark (`measure-resize-continuity.sh`)<br>• **Lab 5:** Fleet GitOps CEL `MutatingAdmissionPolicy` |
-| **02:45 – 03:00** | **Part 5 — Production Discovery & Wrap-up** | • Kernel baseline discovery checklist & SoW architecture rules |
+| **02:15 – 02:30** | **Part 4 — Conclusion & Production Synergy** | • Combining In-Place & Aggregate Scaling, VPA, discovery checklist |
 
 ---
 
@@ -108,8 +107,8 @@ userns-vertical-scaling/
     ├── 01b-userns-hostpath.yaml         # Lab 1b: hostPath breakout UID remapping proof
     ├── 02-resize-container.yaml         # Lab 2: Container-level in-place resize (GA)
     ├── 03-resize-podlevel.yaml          # Lab 3: Pod-level aggregate resize (Beta 1.36)
-    ├── 04-podinfo-continuity.yaml       # Lab 4: Podinfo + Gateway HTTPRoute continuity test
-    └── 05-fleet-cel-mutating-policy.yaml# Lab 5: Fleet CEL MutatingAdmissionPolicy
+    ├── 04-podinfo-continuity.yaml       # Reference: Podinfo + Gateway HTTPRoute continuity
+    └── 05-fleet-cel-mutating-policy.yaml# Reference: Fleet CEL MutatingAdmissionPolicy
 ```
 
 ---

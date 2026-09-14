@@ -80,8 +80,7 @@ Florian Coulombel — SUSE Consulting
 | **00:45** | **2. Container In-Place Vertical Scaling** | Theory & Lab 2 | Live cgroup v2 patch without Pod restarts (`restartCount: 0`) |
 | **01:30** | ☕ *Coffee Break (15 min)* | — | — |
 | **01:45** | **3. Pod-Level Aggregate Scaling** | Theory & Lab 3 | Shared resource pools across multi-container / sidecar pods |
-| **02:15** | **4. Enterprise Combos (Gateway + CEL)** | Lab 4 & 5 | Zero-downtime traffic proof & Fleet GitOps enforcement |
-| **02:45** | **5. Discovery, Architecture & Wrap-up** | Synthesis | Kernel baselines, silent no-op gotchas & SoW checklist |
+| **02:15** | **4. Conclusion & Production Synergy** | Architecture | Combining In-Place & Aggregate Scaling, VPA, discovery rules |
 
 ---
 
@@ -496,82 +495,27 @@ kubectl -n userns-lab get pod podlevel-resize-demo -o jsonpath='{.status.conditi
 
 ---
 
-<!-- _class: divider -->
+# Conclusion: Combining In-Place & Aggregate Scaling
 
-# Part 4: Enterprise Combos
-## Zero-Downtime Proof & Fleet GitOps Enforcement
+**The Holy Grail:** What happens when you combine both primitives?
 
----
-
-<!-- _class: lab -->
-
-# Lab 4 (Combo): Proving Zero Downtime
-
-Deploy `podinfo` behind a Gateway API `HTTPRoute` and run sustained traffic:
-
-<style scoped> pre { font-size: 0.62em; line-height: 1.20; } </style>
-
-```bash
-kubectl apply -f userns-vertical-scaling/manifests/04-podinfo-continuity.yaml
-
-# 1. In terminal 1: Launch the traffic continuity benchmark
-./userns-vertical-scaling/measure-resize-continuity.sh -u http://127.0.0.1:8080/version -d 20
-
-# 2. In terminal 2: Live resize the pod
-POD=$(kubectl -n userns-lab get pod -l app=podinfo-resize -o jsonpath='{.items[0].metadata.name}')
-kubectl -n userns-lab patch pod "$POD" --subresource resize --patch \
-  '{"spec":{"containers":[{"name":"podinfo","resources":{"requests":{"cpu":"250m"},"limits":{"cpu":"500m"}}}]}}'
-```
-
-- **Result:** `0% dropped requests`, `0 latency spikes`.
-- **Contrast:** Repeat with `kubectl rollout restart deployment/podinfo-resize` — observe immediate dropped packets during endpoint churn!
+1. **Dynamic Shared Budgeting for Sidecar Pods:**
+   - Scale the aggregate `spec.resources` pool of a multi-container pod (App + Envoy proxy + Fluentbit) in-place during peak hours without touching or restarting any container.
+2. **Zero-Downtime Elastic Cold Starts:**
+   - Burst the aggregate pod budget during initialization (JIT compilation, LLM model loading), then shrink the shared budget live once healthy.
+3. **Disruption-Free Stateful & AI Workloads:**
+   - Continuously right-size KubeVirt VMs, vLLM inference engines, and database pods with **0 connection drops, 0 GPU context loss, and 0 IP churn**.
 
 ---
 
-<!-- _class: lab -->
+# Customer Discovery & Production Checklist
 
-# Lab 5 (Combo): Fleet GitOps CEL Admission
-
-Enforce `hostUsers: false` cluster-wide using native K8s 1.36 CEL policies:
-
-<style scoped> pre { font-size: 0.62em; line-height: 1.18; } </style>
-
-```yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingAdmissionPolicy
-metadata:
-  name: force-userns
-spec:
-  matchConstraints:
-    resourceRules:
-    - { apiGroups: [""], apiVersions: ["v1"], resources: ["pods"], operations: ["CREATE"] }
-  mutations:
-  - patchType: ApplyConfiguration
-    applyConfiguration:
-      expression: 'Object{spec: Object.spec{hostUsers: false}}'
-```
-
-- **Why this matters for Rancher / Fleet:**
-  - Zero webhook pods to deploy, patch, or maintain.
-  - Native Kubernetes CEL evaluation at the API server layer.
-
----
-
-<!-- _class: divider -->
-
-# Part 5: Production Discovery & Summary
-## Delivering Value on RKE2 & Rancher
-
----
-
-# Customer Discovery & SoW Checklist
-
-Before promising User Namespaces or In-Place Resize in an engagement:
+Before designing User Namespaces or In-Place Scaling into an engagement:
 
 | Requirement | Target Feature | Validation Command |
 |---|---|---|
 | **Linux Kernel ≥ 6.3** | User Namespaces | `uname -r` or `status.nodeInfo.kernelVersion` |
-| **idmap filesystem** | User Namespaces | `df -T /var/lib/kubelet` (`ext4/xfs/btrfs`) |
+| **idmap filesystem** | User Namespaces | `df -T /var/lib/kubelet` (`ext4/xfs/btrfs/tmpfs`) |
 | **cgroup v2** | In-Place Resize | `cat /sys/fs/cgroup/cgroup.controllers` |
 | **containerd ≥ 2.0** | Pod-Level Resize | `crictl info \| grep containerd` |
 | **kubectl ≥ 1.32** | CLI resize patch | `kubectl version --client` |
@@ -580,31 +524,17 @@ Before promising User Namespaces or In-Place Resize in an engagement:
 
 ---
 
-# Summary: Container Root vs. Host Security Matrix
-
-| Configuration | Mount & Process Isolation | Host Kernel Identity | Breakout Blast Radius |
-|---|---|---|---|
-| **Default K8s (`runAsUser: 0`)** | Private `mnt`, `pid`, `net` | `UID 0 in init_user_ns` | 🚨 **Host Root Takeover** (Host root authority) |
-| **Legacy Fix (`runAsUser: 1000`)** | Private `mnt`, `pid`, `net` | `UID 1000 in init_user_ns` | 🛡️ **Unprivileged**, *breaks apps needing root inside!* |
-| **User Namespaces (`hostUsers: false`)** | Private `mnt`, `pid`, `net`, `user` | **`UID 100000+`** | 🛡️ **Zero Host Privilege** (Full root inside container) |
-
-<span class="small">Delivered natively in Kubernetes 1.36 on RKE2 with Linux kernel ≥ 6.3.</span>
-
----
-
 # Summary & Key Takeaways
 
-1. **User Namespaces (`hostUsers: false`):**
-   - Stable/GA in 1.36. Container root is unprivileged on host.
-   - Essential defense-in-depth control for air-gapped/sovereign RKE2 clusters.
-   - Beware the silent no-op on kernels < 6.3.
-2. **Container In-Place Vertical Scaling:**
-   - Stable/GA in 1.35+. Updates cgroup v2 limits live with `restartCount: 0`.
-   - Eliminates cold starts, connection drops, and endpoint churn.
-3. **Pod-Level Aggregate Scaling:**
-   - Beta in 1.36. Solves the multi-container / sidecar overhead problem.
-4. **GitOps & Fleet Synergy:**
-   - Enforce security and scaling policies declaratively using CEL Mutating Admission.
+1. **User Namespaces (`hostUsers: false` — GA in 1.36):**
+   - Eliminates root-on-host threat model via Linux 6.3+ `idmapped mounts`.
+   - Essential defense-in-depth for sovereign/air-gapped RKE2 clusters.
+2. **Container In-Place Vertical Scaling (GA in 1.35+):**
+   - Live cgroup v2 resource updates with `restartCount: 0`.
+   - Preserves active TCP sessions, in-memory caches, and pod IPs.
+3. **Pod-Level Aggregate Scaling (Beta in 1.36):**
+   - Solves the "sidecar tax" via shared `spec.resources` pools.
+   - Foundation for non-disruptive VPA and dynamic startup boosting.
 
 ---
 
