@@ -50,8 +50,8 @@ kubectl exec userns-demo -- id
 # uid=0(root) — looks like root from inside, as expected
 
 # now look from the host side
-ps -eo pid,uid,cmd | grep 'sleep 3600'
-# uid here will be a large, non-zero, per-pod value — NOT 0
+ps -eo pid,user,uid,cmd | grep 'sleep 3600'
+# user/uid here will be a large, non-zero, per-pod value — NOT root / 0
 ```
 
 Re-run without `hostUsers: false` (or just `hostUsers: true`) and repeat the host-side `ps` — you'll see uid 0 on the host this time. That delta is the whole feature in one comparison.

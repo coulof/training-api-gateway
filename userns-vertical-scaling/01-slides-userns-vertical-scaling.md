@@ -261,8 +261,8 @@ kubectl -n userns-lab exec userns-demo -- id
 # Output: uid=0(root) gid=0(root) groups=0(root)
 
 # 2. Inspect the process from the host node:
-ps -eo pid,uid,cmd | grep 'sleep 3600'
-# Result: The UID is a high unprivileged value (e.g. 100000), NOT 0!
+ps -eo pid,user,uid,cmd | grep 'sleep 3600'
+# Result: USER/UID is a high unprivileged value (e.g. 100000), NOT root / 0!
 ```
 
 **The Takeaway:** The application enjoys full root capabilities inside its container namespace, but has zero privileged access on the underlying node.

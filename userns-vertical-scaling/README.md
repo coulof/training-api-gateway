@@ -83,7 +83,7 @@ A common architectural question engineers encounter is: *"If a pod running as UI
 
 | Time | Module & Topic | Hands-on Labs & Focus |
 |:---:|---|---|
-| **00:00 – 00:45** | **Part 1 — User Namespaces** | • **Lab 1a:** `hostUsers: false` baseline pod (`ps -eo pid,uid,cmd`)<br>• **Lab 1b:** HostPath breakout containment & UID remapping |
+| **00:00 – 00:45** | **Part 1 — User Namespaces** | • **Lab 1a:** `hostUsers: false` baseline pod (`ps -eo pid,user,uid,cmd`)<br>• **Lab 1b:** HostPath breakout containment & UID remapping |
 | **00:45 – 01:30** | **Part 2 — Container In-Place Scaling (GA)** | • **Lab 2:** CPU load test under live `kubectl patch --subresource resize`<br>• Inspecting `status.conditions` & `restartCount: 0` |
 | **01:30 – 01:45** | ☕ **Coffee & Networking Break** | — |
 | **01:45 – 02:15** | **Part 3 — Pod-Level Aggregate Scaling (Beta)** | • **Lab 3:** Shared `spec.resources` budget across multi-container pods |
@@ -145,8 +145,8 @@ kubectl -n userns-lab exec userns-demo -- id
 # Output: uid=0(root) gid=0(root) groups=0(root)
 
 # 2. Check identity from the host node (SSH or node command):
-ps -eo pid,uid,cmd | grep 'sleep 3600'
-# Output: The UID on the host is 100000+ (an unprivileged subordinate UID)!
+ps -eo pid,user,uid,cmd | grep 'sleep 3600'
+# Output: USER/UID on the host is 100000+ (an unprivileged subordinate UID)!
 ```
 
 ---
