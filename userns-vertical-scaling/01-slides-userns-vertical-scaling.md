@@ -167,34 +167,54 @@ Deliver the punchline: To the host kernel, UID 0 is the exact same root running 
 
 ---
 
-# The Container Breakout Threat Model (KEP-127)
+# The Container Breakout Threat Model
 
-> *"Pods run with the host's user namespace by default. A process running as UID 0 in a pod runs as UID 0 on the host."* — **KEP-127**
+> *"Without using a user namespace a container running as root, in the case of a container breakout, has root privileges on the node... None of this is true when we use user namespaces."*
+> — **Kubernetes Official Documentation** (`concepts/workloads/pods/user-namespaces`)
 
 - **1. Host Mounts & Sockets (`hostPath`):**
-  - Mounting `/tmp` or `/run/containerd.sock` into the pod.
-  - Host DAC checks `euid == 0` against root-owned files ➔ **Allowed immediately without special capabilities**.
+  - Mounting `/tmp` or containerd sockets into the pod.
+  - Host DAC checks `euid == 0` against root-owned files ➔ **Allowed immediately**.
 - **2. Runtime & Kernel Breakout CVEs:**
-  - Escapes from `runc` or kernel bugs (CVE-2019-5736, CVE-2024-21626).
-  - An escaping `UID 1000` process lands as an unprivileged nobody on the node.
+  - Container engine escapes (CVE-2019-5736, CVE-2024-21626).
+  - An escaping `UID 1000` process lands as an unprivileged user on the node.
   - An escaping `UID 0` process lands with **full host root authority** and owns the node!
 
 <span class="warn">A container escape by UID 0 results in instant node compromise.</span>
 
 ---
 
-# The Solution: User Namespaces & idmap Mounts
+# Why 13 Years in the Making? (2013 ➔ 2026)
 
-- **`spec.hostUsers: false`:**
-  - Virtualizes the UID/GID space (`man 7 user_namespaces`).
-  - Maps container `UID 0` to unprivileged subordinate `UID 100000+` on host.
-  - Full root inside container user namespace, **zero capabilities in `init_user_ns`**.
-- **Why Podman in 2019, but Kubernetes in 2026?**
-  - Podman used single-machine local `$HOME` storage.
-  - Kubernetes required **multi-tenant CSI persistence** without recursive `chown` on petabytes of PVCs ➔ enabled by Christian Brauner's **Linux idmapped mounts** (Linux 5.12 ➔ 6.3+).
-- **Upstream Specifications & Tickets:**
-  - Kernel: [`Documentation/filesystems/idmappings.rst`](https://docs.kernel.org/filesystems/idmappings.html)
-  - Kubernetes: [KEP-127](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/127-user-namespaces) / Tracking Issue: [`kubernetes/kubernetes#102394`](https://github.com/kubernetes/kubernetes/issues/102394)
+- **2013: Linux Kernel 3.8 Merges `user_namespaces`**
+  - Why couldn't Kubernetes v1.0 (2015) simply enable it?
+- **The Blocker: The Recursive `chown` Storage Trap**
+  - If container UID 0 maps to host UID 100000, persistent storage files must be owned by UID 100000.
+  - Kubelet would need to recursively `chown` multi-terabyte PVCs on every pod boot ➔ ruined disk IOPS and prevented volume sharing.
+- **The Kernel Breakthrough: `idmapped mounts` (Christian Brauner)**
+  - **Linux 5.12 (2021):** VFS in-memory UID translation without on-disk chown ([`Documentation/filesystems/idmappings.rst`](https://docs.kernel.org/filesystems/idmappings.html)).
+  - **Linux 6.3 (2023):** `tmpfs` idmap support merged ➔ unlocks K8s Secrets & ServiceAccount tokens!
+- **The Ecosystem Alignment (2023–2026):**
+  - CRI proto updates, containerd 2.0+, runc 1.2+, and [KEP-127](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/127-user-namespaces) graduation (Alpha 1.25 ➔ GA 1.36).
+
+---
+
+# Enabling User Namespaces: spec.hostUsers
+
+Activate user namespaces with one declarative field:
+
+```yaml
+spec:
+  hostUsers: false
+```
+
+- **Top-Level Symmetry:**
+  - `hostNetwork: false` (Private NetNS) │ `hostPID: false` (Private PIDNS)
+  - **`hostUsers: false` [NEW in 1.36] (Private UserNS)**
+- **How It Operates Under the Hood:**
+  - Kubelet assigns an unprivileged subordinate range (e.g. 65,536 IDs per pod via `subidsPerPod`).
+  - **Inside container:** Process is UID 0 (package managers, root daemons work seamlessly).
+  - **On host node:** Process runs as unprivileged `UID 100000+` with **zero host capabilities**.
 
 ---
 

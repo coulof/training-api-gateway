@@ -40,12 +40,23 @@ Linux containers are constructed from 4 foundational kernel primitives:
 
 A common architectural question engineers encounter is: *"If a pod running as UID 0 is already confined by Linux namespaces, why is it considered dangerous?"*
 
-#### The Upstream Threat Model (KEP-127)
+#### The Official Threat Model
+
+> *"Without using a user namespace a container running as root, in the case of a container breakout, has root privileges on the node. And if some capability were granted to the container, the capabilities are valid on the host too. None of this is true when we use user namespaces."*  
+> — **[Kubernetes Documentation: User Namespaces](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/#pods-and-userns)**
+
 * **Visibility Namespaces (`mnt`, `pid`, `net`, `ipc`, `uts`):** Confine the process's view of the system. The container process cannot see host processes or the host filesystem.
 * **Identity & Credentials (`task_struct->cred`):** Without User Namespaces, the process credential in the host kernel is **`UID 0 in init_user_ns`**.
 * **Container Breakout Vectors:**
   1. **Host Mounts & Sockets (`hostPath`):** When `/tmp` or `/run/containerd.sock` is mounted into the pod, the kernel's DAC engine evaluates: *"Is caller UID 0 allowed to overwrite this UID 0 file?"* ➔ **Allowed immediately**.
   2. **Runtime & Kernel Breakout CVEs:** In container runtime escapes (e.g. `runc` CVE-2019-5736, CVE-2024-21626), an escaping process running as **UID 1000** lands on the host as an unprivileged user, whereas a process running as **UID 0** lands with **full host root authority** and compromises the entire node.
+
+#### Why 13 Years in the Making? (2013 ➔ 2026)
+
+* **2013:** Linux kernel 3.8 merges `user_namespaces`.
+* **The Blocker (The Recursive `chown` Storage Trap):** If container UID 0 maps to host UID 100000, persistent storage files must be owned by UID 100000. Without kernel filesystem support, the kubelet would have needed to recursively `chown` multi-terabyte PVCs on every pod startup, destroying storage IOPS.
+* **The Kernel Breakthrough (`idmapped mounts`):** Christian Brauner merged `idmapped mounts` into Linux **5.12** (2021) for VFS in-memory UID translation without on-disk chowns, and added `tmpfs` idmap support in Linux **6.3** (2023), unlocking Kubernetes Secrets and ServiceAccount tokens.
+* **Orchestration & Runtime Alignment:** Supported in `containerd` 2.0+, `runc` 1.2+, and graduated in Kubernetes 1.36 GA via [KEP-127](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/127-user-namespaces).
 
 #### Container Root vs. Host Security Matrix
 
