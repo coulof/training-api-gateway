@@ -1,4 +1,4 @@
-# AGENT.md — Gateway API on RKE2 training
+# AGENTS.md — Gateway API on RKE2 training
 
 Instructions for an AI agent continuing work on this training material.
 
