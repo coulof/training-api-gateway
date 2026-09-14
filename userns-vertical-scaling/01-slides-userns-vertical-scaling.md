@@ -134,6 +134,25 @@ Deliver the punchline: To the host kernel, UID 0 is the exact same root running 
 
 ---
 
+# The 8 Linux Kernel Namespaces
+
+<style scoped> table { font-size: 0.62em; width: 100%; } </style>
+
+| # | Namespace | Kernel | What It Isolates | In K8s by default? |
+|---|---|---|---|:---:|
+| 1 | **Mount (`mnt`)** | 2.4.19 (2002) | Filesystem mount points & root directory (`/`) | ✅ **Yes** (since v1.0) |
+| 2 | **Process ID (`pid`)** | 2.6.24 (2008) | Process IDs (container sees itself as `PID 1`) | ✅ **Yes** (since v1.0) |
+| 3 | **Network (`net`)** | 2.6.29 (2009) | Network devices, IPs, routes, packet filtering | ✅ **Yes** (since v1.0) |
+| 4 | **IPC (`ipc`)** | 2.6.19 (2006) | System V IPC & POSIX message queues | ✅ **Yes** (since v1.0) |
+| 5 | **UTS (Hostname)** | 2.6.19 (2006) | Hostname & NIS domain name | ✅ **Yes** (since v1.0) |
+| 6 | **Cgroup (`cgroup`)** | 4.6 (2016) | `/proc/self/cgroup` and hierarchy view | ✅ **Yes** (v1.10+) |
+| 7 | **Time (`time`)** | 5.6 (2020) | Monotonic and boot system clocks | ✅ **Yes** (v1.22+) |
+| 8 | **User (`user`)** | 3.8 (2013) | **User IDs (UID), Group IDs (GID) & root powers** | ❌ **NO! (GA in 1.36)** |
+
+<span class="small">K8s v1.0 isolated 5 namespaces. The 8th (`user`) remained unisolated for 11 years until K8s 1.36.</span>
+
+---
+
 # The Locked Room Paradox: Aren't Containers Confined?
 
 **"Wait, if a container runs as UID 0, isn't it still trapped in its namespaces?"**

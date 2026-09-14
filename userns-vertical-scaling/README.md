@@ -23,6 +23,19 @@ Linux containers are constructed from 4 foundational kernel primitives:
 * **Capabilities:** Restricts **kernel privileges** (drops module loading, raw disk access).
 * **Seccomp:** Filters **system calls** (blocks dangerous kernel syscalls like `ptrace`).
 
+#### The 8 Linux Kernel Namespaces
+
+| # | Namespace | Kernel | What It Isolates | In Kubernetes by default? |
+|---|---|---|---|:---:|
+| 1 | **Mount (`mnt`)** | 2.4.19 (2002) | Filesystem mount points & root directory (`/`) | ✅ **Yes** (since v1.0, 2015) |
+| 2 | **Process ID (`pid`)** | 2.6.24 (2008) | Process IDs (container sees itself as `PID 1`) | ✅ **Yes** (since v1.0, 2015) |
+| 3 | **Network (`net`)** | 2.6.29 (2009) | Network devices, IPs, routes, packet filtering | ✅ **Yes** (since v1.0, 2015) |
+| 4 | **IPC (`ipc`)** | 2.6.19 (2006) | System V IPC & POSIX message queues | ✅ **Yes** (since v1.0, 2015) |
+| 5 | **UTS (Hostname)** | 2.6.19 (2006) | Hostname & NIS domain name | ✅ **Yes** (since v1.0, 2015) |
+| 6 | **Cgroup (`cgroup`)** | 4.6 (2016) | `/proc/self/cgroup` and hierarchy view | ✅ **Yes** (v1.10+, 2018) |
+| 7 | **Time (`time`)** | 5.6 (2020) | Monotonic and boot system clocks | ✅ **Yes** (v1.22+, 2021) |
+| 8 | **User (`user`)** | 3.8 (2013) | **User IDs (UID), Group IDs (GID) & root powers** | ❌ **NO! (GA in 1.36, 2026)** |
+
 A common paradox engineers encounter is: *"If a pod running as UID 0 is already confined by Linux namespaces, why is it considered dangerous?"*
 
 #### The "Locked Room" Paradox
