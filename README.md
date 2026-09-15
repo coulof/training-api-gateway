@@ -55,6 +55,7 @@ This training guides participants through a hands-on evolution of application ro
     ├── 12-rbac-gateway.yaml          # Lab 4.4: Scoped route-editor Role
     ├── 20-podinfo-grpc.yaml          # Lab 6.1: podinfo gRPC (appProtocol: h2c)
     ├── 21-grpcroute.yaml             # Lab 6.2: GRPCRoute with method matching
+    ├── 25-tcproute.yaml              # Reference: Non-HTTP Redis workload & Layer 4 TCPRoute
     ├── 29-tenants.yaml               # Lab 7.1: team-a & team-b namespaces and apps
     ├── 30-gateway-shared.yaml        # Lab 7.2: Shared Gateway with allowedRoutes
     ├── 30-httproute-team-a.yaml      # Lab 7.3: Tenant HTTPRoute

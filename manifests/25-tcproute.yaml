@@ -1,0 +1,170 @@
+# =============================================================================
+# README: Non-HTTP Workload & Layer 4 (L4) TCPRoute
+# =============================================================================
+#
+# 📖 WHAT THIS MANIFEST DOES:
+#   Demonstrates raw Layer 4 (L4) TCP stream routing via Kubernetes Gateway API.
+#   Unlike HTTPRoute and GRPCRoute (which inspect L7 headers/paths/methods),
+#   TCPRoute proxies raw byte streams at the transport layer to any TCP backend
+#   (Databases, Caches, Message Queues, Custom protocols).
+#
+# 🏗️ ARCHITECTURE (ALL-IN-ONE):
+#   1. Deployment : Redis 7 (alpine) listening on port 6379 in namespace 'demo'
+#   2. Service    : ClusterIP service 'redis-app' exposing port 6379 in 'demo'
+#   3. Gateway    : 'tcp-gateway' in namespace 'infra' with a TCP listener on port 6379
+#   4. TCPRoute   : 'redis-tcp-route' in 'demo' binding the Gateway to Service/redis-app
+#
+# -----------------------------------------------------------------------------
+# 🚀 HOW TO APPLY & TEST WITH NETCAT (nc):
+# -----------------------------------------------------------------------------
+#
+# 1. Apply this all-in-one manifest:
+#    kubectl apply -f manifests/25-tcproute.yaml
+#
+# 2. Check Gateway and TCPRoute status:
+#    kubectl -n infra get gateway tcp-gateway
+#    kubectl -n demo get tcproute redis-tcp-route
+#
+# 3. Test with Netcat (one-shot TCP ping):
+#    echo "PING" | nc -q 1 <NODE_IP_OR_127.0.0.1> 6379
+#    # Expected response from Redis:
+#    # +PONG
+#
+# 4. Interactive session with Netcat:
+#    nc <NODE_IP_OR_127.0.0.1> 6379
+#    PING
+#    +PONG
+#    SET lab-key "Gateway API L4 TCP Works!"
+#    +OK
+#    GET lab-key
+#    $26
+#    Gateway API L4 TCP Works!
+#    QUIT
+#    +OK
+#
+# 5. (Optional) Test with redis-cli:
+#    redis-cli -h <NODE_IP_OR_127.0.0.1> -p 6379 PING
+#    # Output: PONG
+#
+# -----------------------------------------------------------------------------
+# ⚠️ OPERATIONAL NOTE: TRAEFIK ON RKE2 (STATIC INFRASTRUCTURE)
+# -----------------------------------------------------------------------------
+# In dynamic Gateway controllers (e.g. Envoy Gateway), creating a Gateway
+# automatically provisions a dedicated proxy.
+#
+# In Traefik on RKE2 (Static Infrastructure), Traefik binds listeners to its
+# existing entryPoints. If port 6379 is not yet opened in Traefik's Helm chart,
+# Traefik will report:
+#   Condition: Accepted=False, Reason: PortUnavailable / ListenersNotValid
+#
+# To open port 6379 on Traefik via HelmChartConfig:
+# ```yaml
+# apiVersion: helm.cattle.io/v1
+# kind: HelmChartConfig
+# metadata:
+#   name: rke2-traefik
+#   namespace: kube-system
+# spec:
+#   valuesContent: |-
+#     ports:
+#       redis:
+#         port: 6379
+#         exposedPort: 6379
+#         protocol: TCP
+# ```
+# =============================================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+---
+# 1. Non-HTTP Workload: Redis
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-app
+  namespace: demo
+  labels:
+    app: redis-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-app
+  template:
+    metadata:
+      labels:
+        app: redis-app
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: redis-port
+          containerPort: 6379
+        resources:
+          requests:
+            cpu: 20m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+---
+# 2. Service for Redis
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-app
+  namespace: demo
+  labels:
+    app: redis-app
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis-tcp
+    port: 6379
+    targetPort: redis-port
+    protocol: TCP
+  selector:
+    app: redis-app
+---
+# 3. Layer 4 Gateway with a TCP Listener
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: tcp-gateway
+  namespace: infra
+spec:
+  gatewayClassName: traefik
+  listeners:
+  - name: redis-tcp
+    port: 6379
+    protocol: TCP
+    allowedRoutes:
+      namespaces:
+        from: All
+---
+# 4. L4 TCPRoute routing port 6379 to Service/redis-app
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: redis-tcp-route
+  namespace: demo
+spec:
+  parentRefs:
+  - name: tcp-gateway
+    namespace: infra
+    sectionName: redis-tcp
+  rules:
+  - backendRefs:
+    - name: redis-app
+      port: 6379
