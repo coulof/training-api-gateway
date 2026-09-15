@@ -56,6 +56,7 @@ This training guides participants through a hands-on evolution of application ro
     ├── 20-podinfo-grpc.yaml          # Lab 6.1: podinfo gRPC (appProtocol: h2c)
     ├── 21-grpcroute.yaml             # Lab 6.2: GRPCRoute with method matching
     ├── 25-tcproute.yaml              # Reference: Non-HTTP Redis workload & Layer 4 TCPRoute
+    ├── 26-tcproute-multi-service.yaml# Reference: Multi-Service L4 TCP Port Multiplexing
     ├── 29-tenants.yaml               # Lab 7.1: team-a & team-b namespaces and apps
     ├── 30-gateway-shared.yaml        # Lab 7.2: Shared Gateway with allowedRoutes
     ├── 30-httproute-team-a.yaml      # Lab 7.3: Tenant HTTPRoute
@@ -128,6 +129,8 @@ curl -s -o /dev/null -w "%{http_code}\n" "$GW_URL/"   # Expect 404 (Traefik is a
 ## 🔮 Roadmap & Future Extensions
 
 - [x] **Core Gateway API Workshop (North-South with Traefik):** Labs 1–7 covering Ingress migration, URL rewriting, traffic splitting, gRPC, and multi-tenant `ReferenceGrant`.
+- [x] **Layer 4 TCP Routing & Dedicated IPs Architecture Note:** Technical guide explaining L4 vs L7 routing mechanics, dedicated IPs (`Gateway.spec.addresses`), port multiplexing, and feature maturity comparison between Traefik and Cilium.
+  * 📋 *Explore the architecture guide:* [`GATEWAY-API-DEDICATED-IPS-AND-L4-ROUTING.md`](GATEWAY-API-DEDICATED-IPS-AND-L4-ROUTING.md)
 - [x] **User Namespaces & In-Place Pod Vertical Scaling:** Dedicated training package for Kubernetes 1.36 GA `hostUsers: false`, container-level in-place resize, pod-level aggregate resize, zero-downtime Gateway traffic proof, and Fleet CEL policies.
   * 📋 *Explore the training package:* [`userns-vertical-scaling/README.md`](userns-vertical-scaling/README.md)
 - [ ] **Cilium Service Mesh on RKE2 (East-West with GAMMA):** Sidecarless eBPF service mesh module covering inter-service routing with `HTTPRoute` (`parentRefs: kind: Service`), fault injection with `podinfo --random-error`, latency timeouts, and Hubble L7 observability.

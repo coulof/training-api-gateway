@@ -1,0 +1,179 @@
+# =============================================================================
+# manifests/26-tcproute-multi-service.yaml
+# Demonstrates Multi-Service Layer 4 TCP Routing (Port Multiplexing & Dual Routes)
+# =============================================================================
+#
+# 📖 WHAT THIS MANIFEST DOES:
+#   Deploys two independent non-HTTP Redis services in namespace 'demo':
+#   - redis-primary   : Port 6379 (standard Redis port)
+#   - redis-secondary : Port 6380 (secondary Redis service)
+#   
+#   Binds both services to a shared L4 Gateway ('tcp-multi-gateway') via two
+#   distinct TCPRoute resources.
+#
+# 🚀 TESTING WITH NETCAT (nc):
+#   nc <NODE_OR_LB_IP> 6379 ➔ Hits redis-primary
+#   nc <NODE_OR_LB_IP> 6380 ➔ Hits redis-secondary
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+---
+# -----------------------------------------------------------------------------
+# Workload 1: Primary Redis (Port 6379)
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-primary
+  namespace: demo
+  labels:
+    app: redis-primary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-primary
+  template:
+    metadata:
+      labels:
+        app: redis-primary
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests: { cpu: 20m, memory: 32Mi }
+          limits: { cpu: 100m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-primary
+  namespace: demo
+spec:
+  type: ClusterIP
+  ports:
+  - name: tcp-redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+  selector:
+    app: redis-primary
+---
+# -----------------------------------------------------------------------------
+# Workload 2: Secondary Redis (Port 6380)
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-secondary
+  namespace: demo
+  labels:
+    app: redis-secondary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-secondary
+  template:
+    metadata:
+      labels:
+        app: redis-secondary
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests: { cpu: 20m, memory: 32Mi }
+          limits: { cpu: 100m, memory: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-secondary
+  namespace: demo
+spec:
+  type: ClusterIP
+  ports:
+  - name: tcp-redis
+    port: 6380
+    targetPort: redis
+    protocol: TCP
+  selector:
+    app: redis-secondary
+---
+# -----------------------------------------------------------------------------
+# Gateway: Multi-Port L4 TCP Gateway
+# -----------------------------------------------------------------------------
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: tcp-multi-gateway
+  namespace: infra
+spec:
+  gatewayClassName: traefik
+  listeners:
+  - name: redis-primary-port
+    port: 6379
+    protocol: TCP
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: redis-secondary-port
+    port: 6380
+    protocol: TCP
+    allowedRoutes:
+      namespaces:
+        from: All
+---
+# -----------------------------------------------------------------------------
+# TCPRoute 1: Primary Redis Route
+# -----------------------------------------------------------------------------
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: redis-primary-route
+  namespace: demo
+spec:
+  parentRefs:
+  - name: tcp-multi-gateway
+    namespace: infra
+    sectionName: redis-primary-port
+  rules:
+  - backendRefs:
+    - name: redis-primary
+      port: 6379
+---
+# -----------------------------------------------------------------------------
+# TCPRoute 2: Secondary Redis Route
+# -----------------------------------------------------------------------------
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: redis-secondary-route
+  namespace: demo
+spec:
+  parentRefs:
+  - name: tcp-multi-gateway
+    namespace: infra
+    sectionName: redis-secondary-port
+  rules:
+  - backendRefs:
+    - name: redis-secondary
+      port: 6380
